@@ -162,7 +162,8 @@ def optimizar_ruta_cw_tabu(data: Dict[str, Any], tiempo_max_seg: int = 60) -> Di
 
     # 3) Construcción global
     clientes_unicos = list({n for rt, _, _ in final_routes for n in rt if n != depot})
-    ruta_final, llegada_final = build_global_feasible_route(data, clientes_unicos, depot)
+    ruta_final, llegada_final = build_global_feasible_route(data, clientes_unicos, depot, tolerancia_seg=1800)  # 30 minutos
+
 
     if ruta_final is None or llegada_final is None:
         print("⚠️ Fallback: ETA artificial debido a falta de ruta válida.")
