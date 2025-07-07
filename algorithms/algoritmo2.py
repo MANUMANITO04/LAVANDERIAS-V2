@@ -30,7 +30,7 @@ def _check_feasible_and_time(route: List[int], data: Dict[str, Any]) -> Tuple[bo
 
     return True, arrivals
 
-def build_route_greedy(data, nodes, depot, tolerancia_seg=6000):
+def build_route_greedy(data, nodes, depot, tolerancia_seg=900):
     visited = set()
     current = depot
     t_now = SHIFT_START_SEC
@@ -42,17 +42,24 @@ def build_route_greedy(data, nodes, depot, tolerancia_seg=6000):
         for nxt in nodes:
             if nxt in visited:
                 continue
+
             t_temp = t_now + data["duration_matrix"][current][nxt]
             if current != depot:
                 t_temp += SERVICE_TIME
+
             w0, w1 = data["time_windows"][nxt]
-            if t_temp <= w1 + tolerancia_seg:
-                wait = max(0, w0 - t_temp)
-                score = t_temp + wait
-                heappush(heap, (score, nxt, t_temp + wait))
+            # Aceptar siempre, pero mostrar advertencia si excede la ventana + tolerancia
+            if t_temp > w1 + tolerancia_seg:
+                st.warning(f"Cliente {nxt} llegará fuera de ventana ({t_temp} > {w1} + {tolerancia_seg})")
+
+            wait = max(0, w0 - t_temp)
+            score = t_temp + wait
+            heappush(heap, (score, nxt, t_temp + wait))
 
         if not heap:
-            return route, arrival, visited  # parcial
+            # Si por algún error heap está vacío (no debería pasar), salir igual
+            break
+
         _, chosen, t_arrival = heappop(heap)
         route.append(chosen)
         arrival.append(t_arrival)
@@ -61,6 +68,7 @@ def build_route_greedy(data, nodes, depot, tolerancia_seg=6000):
         t_now = t_arrival
 
     return route, arrival, visited
+
 
 def optimizar_ruta_cw_tabu(data: Dict[str, Any], tiempo_max_seg: int = 60) -> Dict[str, Any]:
     depot = data["depot"]
