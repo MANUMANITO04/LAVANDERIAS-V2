@@ -231,12 +231,33 @@ def ver_ruta_optimizada():
             dest = (df_f.loc[idx_d,"lat"], df_f.loc[idx_d,"lon"])
             nombre_dest = df_f.loc[idx_d,"nombre_cliente"]
             ETA_dest = df_display.loc[df_display["orden"] == leg + 1, "ETA"].iloc[0]
-        else:
+        """else:
             idx_o = ruta[L - 1]
             orig = (df_f.loc[idx_o,"lat"], df_f.loc[idx_o,"lon"])
             dest = (COCHERA["lat"], COCHERA["lon"])
             nombre_dest = COCHERA["direccion"]
-            ETA_dest = "—"
+            ETA_dest = "—""""
+            else:
+                # Buscar índices del nodo "Depósito" (puede aparecer 2 veces: recojo y descarga)
+                planta_idxs = [i for i in reversed(ruta) if df_f.loc[i, "nombre_cliente"] == "Depósito"]
+                planta_descarga_idx = planta_idxs[1] if len(planta_idxs) >= 2 else planta_idxs[0] if planta_idxs else None
+        
+                if leg == L:
+                    # Último cliente → Planta (descarga)
+                    idx_o = ruta[L - 1]
+                    idx_d = planta_descarga_idx
+                    orig = (df_f.loc[idx_o, "lat"], df_f.loc[idx_o, "lon"])
+                    dest = (df_f.loc[idx_d, "lat"], df_f.loc[idx_d, "lon"])
+                    nombre_dest = "Depósito (Descarga)"
+                    ETA_dest = df_display[df_display["nombre_cliente"] == "Depósito"].iloc[-1]["ETA"]
+                else:
+                    # Planta (descarga) → Cochera
+                    idx_o = planta_descarga_idx
+                    orig = (df_f.loc[idx_o, "lat"], df_f.loc[idx_o, "lon"])
+                    dest = (COCHERA["lat"], COCHERA["lon"])
+                    nombre_dest = COCHERA["direccion"]
+                    ETA_dest = "—"
+
 
         st.markdown(
             f"### Próximo → **{nombre_dest}**  \n"
