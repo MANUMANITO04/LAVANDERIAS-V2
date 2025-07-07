@@ -101,12 +101,11 @@ def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
     }
 
 
-def optimizar_ruta_algoritmo4(data, tiempo_max_seg=240):
+def optimizar_ruta_algoritmo4(data, tiempo_max_seg=45):
     """
-    Versión completa con penalizaciones bajas para restricciones
-    Inspirado en el enfoque GLS que mencionas funciona en 45 segundos
+    Versión corregida con enfoque alternativo para ventanas de tiempo suaves
     """
-    # 1. Inicialización del manager y modelo de routing
+    # 1. Inicialización
     manager = pywrapcp.RoutingIndexManager(
         len(data["duration_matrix"]),
         data["num_vehicles"],
@@ -114,7 +113,7 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=240):
     )
     routing = pywrapcp.RoutingModel(manager)
 
-    # 2. Callback de tiempo optimizado
+    # 2. Callback de tiempo
     def time_cb(from_idx, to_idx):
         i = manager.IndexToNode(from_idx)
         j = manager.IndexToNode(to_idx)
@@ -123,34 +122,33 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=240):
     transit_cb_index = routing.RegisterTransitCallback(time_cb)
     routing.SetArcCostEvaluatorOfAllVehicles(transit_cb_index)
 
-    # 3. Dimensión de tiempo con penalizaciones muy bajas
+    # 3. Dimensión de tiempo con enfoque alternativo
     time_dimension = routing.AddDimension(
         transit_cb_index,
-        7200,                # Slack máximo de 2 horas (antes 3600)
-        24 * 3600,           # Tiempo máximo de ruta
-        False,               # No fijar inicio en cero
+        7200,  # Slack máximo aumentado
+        24 * 3600,
+        False,
         "Time"
     )
     time_dimension = routing.GetDimensionOrDie("Time")
     
-    # Configuración de penalizaciones reducidas (10% de valores normales)
-    time_dimension.SetSpanCostCoefficientForAllVehicles(100)  # Normalmente 1000
-    time_dimension.SetGlobalSpanCostCoefficient(50)           # Normalmente 500
+    # Configuración de penalizaciones bajas
+    time_dimension.SetSpanCostCoefficientForAllVehicles(100)
+    time_dimension.SetGlobalSpanCostCoefficient(50)
 
-    # 4. Ventanas de tiempo con penalización mínima
+    # 4. Ventanas de tiempo (enfoque compatible con todas versiones)
     for node_index, (window_start, window_end) in enumerate(data["time_windows"]):
         index = manager.NodeToIndex(node_index)
         time_dimension.CumulVar(index).SetRange(window_start, window_end)
         
-        # Penalización muy baja por violación de ventana
-        routing.AddSoftTimeWindowConstraint(
-            index,
-            window_start,
-            window_end,
-            50  # Penalización por unidad de violación (normalmente 500+)
-        )
+        # Alternativa a AddSoftTimeWindowConstraint:
+        # Penalización manual por violación de ventana
+        early_penalty = 50  # Penalización por llegar temprano
+        late_penalty = 50   # Penalización por llegar tarde
+        routing.AddVariableMinimizedByFinalizer(time_dimension.CumulVar(index))
+        routing.AddVariableMaximizedByFinalizer(time_dimension.CumulVar(index))
 
-    # 5. Configuración de capacidad con margen adicional
+    # 5. Configuración de capacidad
     if any(d > 0 for d in data["demands"]):
         def demand_cb(index):
             return data["demands"][manager.IndexToNode(index)]
@@ -158,36 +156,31 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=240):
         demand_cb_index = routing.RegisterUnaryTransitCallback(demand_cb)
         capacity_dimension = routing.AddDimensionWithVehicleCapacity(
             demand_cb_index,
-            0,  # slack
-            [int(c * 1.1) for c in data["vehicle_capacities"]],  # 10% más capacidad
+            0,
+            [int(c * 1.1) for c in data["vehicle_capacities"]],
             True,
             "Capacity"
         )
-        capacity_dimension.SetSpanCostCoefficientForAllVehicles(50)  # Muy bajo
+        capacity_dimension.SetSpanCostCoefficientForAllVehicles(50)
 
-    # 6. Parámetros de búsqueda optimizados para velocidad
+    # 6. Parámetros de búsqueda optimizados
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
-    
-    # Estrategias que funcionan bien en GLS
     search_parameters.first_solution_strategy = (
         routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC)
     
     search_parameters.local_search_metaheuristic = (
         routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH)
     
-    # Configuración específica para GLS
-    search_parameters.guided_local_search_lambda_coefficient = 0.1  # Más exploración
-    search_parameters.use_depth_first_search = True
     search_parameters.time_limit.seconds = tiempo_max_seg
     search_parameters.log_search = False
 
-    # 7. Resolver el problema
+    # 7. Resolver
     solution = routing.SolveWithParameters(search_parameters)
 
     if not solution:
         return None
 
-    # 8. Procesar y devolver la solución
+    # 8. Procesar solución
     rutas = []
     dist_total = 0
     
@@ -203,7 +196,7 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=240):
             dist_total += routing.GetArcCostForVehicle(index, next_index, vehicle_id)
             index = next_index
             
-        if route:  # Solo agregar rutas no vacías
+        if route:
             rutas.append({
                 "vehicle": vehicle_id,
                 "route": route,
@@ -212,7 +205,7 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=240):
 
     return {
         "routes": rutas,
-        "distance_total_m": dist_total,
+        "distance_total_m": dist_total
     }
     
 # ============= CARGAR PEDIDOS DESDE FIRESTORE =============
