@@ -30,7 +30,7 @@ def _check_feasible_and_time(route: List[int], data: Dict[str, Any]) -> Tuple[bo
 
     return True, arrivals
 
-def build_route_greedy(data, nodes, depot, tolerancia_seg=900):
+def build_route_greedy(data, nodes, depot, tolerancia_seg=1200):
     visited = set()
     current = depot
     t_now = SHIFT_START_SEC
