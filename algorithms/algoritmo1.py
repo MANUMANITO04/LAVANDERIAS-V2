@@ -181,7 +181,7 @@ def optimizar_ruta_algoritmo22(data, tiempo_max_seg=60):
     )
     time_dim = routing.GetDimensionOrDie("Time")
     # (opcional) penalizar makespan y slack:
-    time_dim.SetGlobalSpanCostCoefficient(1000)
+    time_dim.SetGlobalSpanCostCoefficient(1)
     for node in range(len(data["time_windows"])):
         idx = manager.NodeToIndex(node)
         routing.AddVariableMinimizedByFinalizer(time_dim.SlackVar(idx))
