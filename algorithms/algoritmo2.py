@@ -65,7 +65,21 @@ def build_route_greedy(data, nodes, depot, tolerancia_seg=600):
             if lateness > 0:
                 st.warning(f"⚠️ Cliente {nxt} será atendido fuera de ventana ({t_temp}s > {w1}s + tolerancia {tolerancia_seg}s)")
 
-            heappush(heap, (score, nxt, max(t
+            heappush(heap, (score, nxt, max(t_temp, w0)))
+
+        if not heap:
+            st.warning("No se pudo asignar más clientes (heap vacío).")
+            break
+
+        _, chosen, t_arrival = heappop(heap)
+        route.append(chosen)
+        arrival.append(t_arrival)
+        visited.add(chosen)
+        current = chosen
+        t_now = t_arrival
+
+    return route, arrival, visited
+
 
 
 
