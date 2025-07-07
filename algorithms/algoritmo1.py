@@ -203,18 +203,23 @@ def optimizar_ruta_algoritmo22(data, tiempo_max_seg=60):
 
     sol = routing.SolveWithParameters(params)
 
-    if not sol:
-        logging.warning("❌ No se encontró solución con OR-Tools.")
-        logging.info("🔍 Ventanas de tiempo por nodo:")
-        for node, (ini, fin) in enumerate(data["time_windows"]):
-            h_ini = f"{ini // 3600:02}:{(ini % 3600) // 60:02}"
-            h_fin = f"{fin // 3600:02}:{(fin % 3600) // 60:02}"
-            label = "[DEPÓSITO]" if node == data["depot"] else f"Nodo {node}"
-            logging.info(f"  {label:12} → {h_ini} - {h_fin}")
-        logging.info("📦 Demandas por nodo:")
-        for i, d in enumerate(data["demands"]):
-            logging.info(f"  Nodo {i}: demanda = {d}")
-        return None
+   if not sol:
+    import logging
+    logging.warning("❌ No se encontró solución con OR-Tools.")
+    logging.info("🔍 Ventanas de tiempo por nodo:")
+
+    for node, (ini, fin) in enumerate(data["time_windows"]):
+        h_ini = f"{ini // 3600:02}:{(ini % 3600) // 60:02}"
+        h_fin = f"{fin // 3600:02}:{(fin % 3600) // 60:02}"
+        label = "[DEPÓSITO]" if node == data["depot"] else f"Nodo {node}"
+        logging.info(f"  {label:12} → {h_ini} - {h_fin}")
+
+    logging.info("📦 Demandas por nodo:")
+    for i, d in enumerate(data["demands"]):
+        logging.info(f"  Nodo {i}: demanda = {d}")
+
+    return None
+
 
     rutas = []
     dist_total_m = 0
