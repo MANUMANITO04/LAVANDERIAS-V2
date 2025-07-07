@@ -129,7 +129,7 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
     # Dimensión de tiempo con inicio fijado a las 08:00
     routing.AddDimension(
         transit_cb_index,
-        3600,                # tiempo de espera permitido (slack)
+        1800,                # tiempo de espera permitido (slack)
         24 * 3600,           # límite total de ruta
         False,                # <- fijar el tiempo inicial a 0 (necesario para controlarlo)
         "Time"
