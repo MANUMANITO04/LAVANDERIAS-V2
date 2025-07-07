@@ -1,15 +1,4 @@
-# features/rutas3.py
-
-import streamlit as st
-import pandas as pd
-from datetime import datetime
-import time as tiempo
-
-import firebase_admin
-from firebase_admin import credentials, firestore
-
-import googlemaps
-from googlemaps.convert import decode_polyline
+import decode_polyline
 
 import folium
 from streamlit_folium import st_folium
@@ -237,27 +226,6 @@ def ver_ruta_optimizada():
             dest = (COCHERA["lat"], COCHERA["lon"])
             nombre_dest = COCHERA["direccion"]
             ETA_dest = "—"
-        """else:
-            # Buscar índices del nodo "Depósito" (puede aparecer 2 veces: recojo y descarga)
-            planta_idxs = [i for i in reversed(ruta) if df_f.loc[i, "nombre_cliente"] == "Depósito"]
-            planta_descarga_idx = planta_idxs[1] if len(planta_idxs) >= 2 else planta_idxs[0] if planta_idxs else None
-    
-            if leg == L:
-                # Último cliente → Planta (descarga)
-                idx_o = ruta[L - 1]
-                idx_d = planta_descarga_idx
-                orig = (df_f.loc[idx_o, "lat"], df_f.loc[idx_o, "lon"])
-                dest = (df_f.loc[idx_d, "lat"], df_f.loc[idx_d, "lon"])
-                nombre_dest = "Depósito (Descarga)"
-                ETA_dest = df_display[df_display["nombre_cliente"] == "Depósito"].iloc[-1]["ETA"]
-            else:
-                # Planta (descarga) → Cochera
-                idx_o = planta_descarga_idx
-                orig = (df_f.loc[idx_o, "lat"], df_f.loc[idx_o, "lon"])
-                dest = (COCHERA["lat"], COCHERA["lon"])
-                nombre_dest = COCHERA["direccion"]
-                ETA_dest = "—""""
-
 
         st.markdown(
             f"### Próximo → **{nombre_dest}**  \n"
@@ -367,4 +335,4 @@ def ver_ruta_optimizada():
         st.markdown(f"- Tiempo de cómputo: **{st.session_state['solve_t']:.2f} s**")
         tiempo_total_min = (max(res["routes"][0]["arrival_sec"]) - 9*3600) / 60
         st.markdown(f"- Tiempo estimado total: **{tiempo_total_min:.2f} min**")
-        st.markdown(f"- Puntos visitados: **{len(ruta)}**")
+        st.markdown(f"- Puntos visitados: **{len(ruta)}
