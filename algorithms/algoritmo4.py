@@ -102,158 +102,162 @@ def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
 
 # ============ ALGORITMO DE SOLUCION LNS ===================
 
-def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120, reintento=False):
+def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
     """
-    Versión mejorada con:
-    - LNS (Large Neighborhood Search) optimizado
-    - Reintentos inteligentes con ajuste de ventanas
-    - Márgenes flexibles en restricciones
-    - Diagnóstico de problemas
-    - Mismo formato de entrada/salida original
+    Versión optimizada con:
+    - Large Neighborhood Search (LNS)
+    - Múltiples intentos internos
+    - Ajuste automático de restricciones
+    - Retorno EXACTO como versión original (solo rutas y distancia)
+    - Llamada única desde externo
     """
-    # 1. Validación inicial de datos
-    if not data or len(data["duration_matrix"]) == 0:
-        return None
-
-    # 2. Configuración inicial del solver
-    manager = pywrapcp.RoutingIndexManager(
-        len(data["duration_matrix"]),
-        data["num_vehicles"],
-        data["depot"]
-    )
-    routing = pywrapcp.RoutingModel(manager)
-
-    # 3. Callback de tiempo con servicio
-    def time_callback(from_index, to_index):
-        from_node = manager.IndexToNode(from_index)
-        to_node = manager.IndexToNode(to_index)
-        return data["duration_matrix"][from_node][to_node] + (SERVICE_TIME if from_node != data["depot"] else 0)
-
-    transit_callback_index = routing.RegisterTransitCallback(time_callback)
-    routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
-
-    # 4. Dimensión de tiempo con márgenes
-    routing.AddDimension(
-        transit_callback_index,
-        7200,  # Slack máximo (2 horas)
-        24 * 3600,  # Ventana máxima de tiempo
-        False,  # No fijar inicio en cero
-        "Time"
-    )
-    time_dimension = routing.GetDimensionOrDie("Time")
-    time_dimension.SetSpanCostCoefficientForAllVehicles(100)  # Penalización moderada
-
-    # 5. Aplicar ventanas de tiempo
-    for node_index, (window_start, window_end) in enumerate(data["time_windows"]):
-        index = manager.NodeToIndex(node_index)
-        time_dimension.CumulVar(index).SetRange(window_start, window_end)
-
-    # 6. Configuración de capacidad (si hay demandas)
-    if any(d > 0 for d in data["demands"]):
-        def demand_callback(from_index):
-            from_node = manager.IndexToNode(from_index)
-            return data["demands"][from_node]
-
-        demand_callback_index = routing.RegisterUnaryTransitCallback(demand_callback)
-        routing.AddDimensionWithVehicleCapacity(
-            demand_callback_index,
-            0,  # slack
-            [int(c * 1.1) for c in data["vehicle_capacities"]],  # 10% más capacidad
-            True,  # start cumul to zero
-            "Capacity"
+    # 1. Configuración inicial común
+    def setup_routing(data, attempt):
+        manager = pywrapcp.RoutingIndexManager(
+            len(data["duration_matrix"]),
+            data["num_vehicles"],
+            data["depot"]
         )
+        routing = pywrapcp.RoutingModel(manager)
 
-    # 7. Configurar parámetros de búsqueda para LNS
-    search_parameters = pywrapcp.DefaultRoutingSearchParameters()
-    
-    # Estrategias combinadas
-    search_parameters.first_solution_strategy = (
-        routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION)
-    
-    search_parameters.local_search_metaheuristic = (
-        routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH)
-    
-    # Configuración específica para LNS
-    search_parameters.local_search_operators.use_path_lns = True
-    search_parameters.local_search_operators.use_inactive_lns = True
-    search_parameters.local_search_operators.use_tsp_opt = True
-    
-    search_parameters.time_limit.seconds = tiempo_max_seg
-    search_parameters.log_search = False
+        # Callback de tiempo
+        def time_cb(from_idx, to_idx):
+            from_node = manager.IndexToNode(from_idx)
+            to_node = manager.IndexToNode(to_idx)
+            return data["duration_matrix"][from_node][to_node] + (SERVICE_TIME if from_node != data["depot"] else 0)
 
-    # 8. Resolver el problema
-    solution = routing.SolveWithParameters(search_parameters)
+        transit_idx = routing.RegisterTransitCallback(time_cb)
+        routing.SetArcCostEvaluatorOfAllVehicles(transit_idx)
 
-    # 9. Sistema de reintentos inteligente
-    if not solution and not reintento:
-        # Identificar nodos problemáticos
-        problematic_nodes = [
-            i for i, (start, end) in enumerate(data["time_windows"])
-            if (end - start) < 3600 and i != data["depot"]  # Ventanas < 1 hora
-        ]
-        
-        if problematic_nodes:
-            # Crear nueva data con ventanas ampliadas
-            new_data = data.copy()
-            new_windows = []
-            for i, (start, end) in enumerate(data["time_windows"]):
-                if i in problematic_nodes:
-                    center = (start + end) // 2
-                    new_windows.append((
-                        max(SHIFT_START_SEC, center - 3600),
-                        min(SHIFT_END_SEC, center + 3600)
-                    ))
-                else:
-                    new_windows.append((start, end))
+        # Dimensión de tiempo
+        time_dim = routing.AddDimension(
+            transit_idx,
+            10800 if attempt > 0 else 7200,  # Slack más flexible en reintentos
+            24*3600,
+            False,
+            "Time"
+        )
+        time_dim = routing.GetDimensionOrDie("Time")
+        time_dim.SetSpanCostCoefficientForAllVehicles(200 if attempt > 0 else 100)
+
+        # Ventanas de tiempo
+        for node, (start, end) in enumerate(data["time_windows"]):
+            idx = manager.NodeToIndex(node)
+            time_dim.CumulVar(idx).SetRange(start, end)
+
+        # Capacidad (si aplica)
+        if any(d > 0 for d in data["demands"]):
+            def demand_cb(from_idx):
+                return data["demands"][manager.IndexToNode(from_idx)]
             
-            new_data["time_windows"] = new_windows
+            demand_idx = routing.RegisterUnaryTransitCallback(demand_cb)
+            routing.AddDimensionWithVehicleCapacity(
+                demand_idx,
+                0,
+                [int(c * (1.2 if attempt > 0 else 1.0)) for c in data["vehicle_capacities"]],
+                True,
+                "Capacity"
+            )
+
+        return routing, manager
+
+    # 2. Estrategias de resolución progresivas
+    def solve_attempt(data, attempt, time_left):
+        routing, manager = setup_routing(data, attempt)
+        
+        params = pywrapcp.DefaultRoutingSearchParameters()
+        
+        # Configuración progresiva por intento
+        strategy = [
+            routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC,
+            routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION,
+            routing_enums_pb2.FirstSolutionStrategy.AUTOMATIC
+        ][min(attempt, 2)]
+        
+        params.first_solution_strategy = strategy
+        params.local_search_metaheuristic = (
+            routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH)
+        
+        # Configuración específica LNS
+        params.local_search_operators.use_path_lns = True
+        params.local_search_operators.use_inactive_lns = True
+        
+        params.time_limit.seconds = max(20, time_left // (3 - attempt))  # Asegurar mínimo 20s
+        
+        return routing.SolveWithParameters(params), routing, manager
+
+    # 3. Procesar solución
+    def extract_solution(solution, routing, manager):
+        if not solution:
+            return None
             
-            # Reintentar con parámetros más relajados
-            return optimizar_ruta_algoritmo4(new_data, tiempo_max_seg, reintento=True)
-
-    # 10. Procesar la solución si existe
-    if not solution:
-        # Diagnóstico detallado del fallo
-        total_demand = sum(data["demands"])
-        total_capacity = sum(data["vehicle_capacities"])
-        narrow_windows = sum(1 for start, end in data["time_windows"] if (end - start) < 3600)
+        routes = []
+        total_dist = 0
+        time_dim = routing.GetDimensionOrDie("Time")
         
-        print(f"⚠️ No se encontró solución. Diagnóstico:")
-        print(f"- Demanda total: {total_demand} vs Capacidad: {total_capacity}")
-        print(f"- Nodos con ventanas <1h: {narrow_windows}/{len(data['time_windows'])}")
-        print(f"- Tiempo máximo agotado: {tiempo_max_seg} segundos")
-        
-        return None
+        for veh in range(data["num_vehicles"]):
+            idx = routing.Start(veh)
+            route, arrivals = [], []
+            while not routing.IsEnd(idx):
+                node = manager.IndexToNode(idx)
+                route.append(node)
+                arrivals.append(solution.Min(time_dim.CumulVar(idx)))
+                next_idx = solution.Value(routing.NextVar(idx))
+                total_dist += routing.GetArcCostForVehicle(idx, next_idx, veh)
+                idx = next_idx
+                
+            if route:
+                routes.append({
+                    "vehicle": veh,
+                    "route": route,
+                    "arrival_sec": arrivals
+                })
 
-    # 11. Extraer y formatear la solución
-    routes = []
-    total_distance = 0
-    time_dimension = routing.GetDimensionOrDie("Time")
+        return {
+            "routes": routes,
+            "distance_total_m": total_dist
+        }
+
+    # 4. Sistema de intentos internos
+    start_time = tiempo.time()
     
-    for vehicle_id in range(data["num_vehicles"]):
-        index = routing.Start(vehicle_id)
-        route_nodes = []
-        arrival_times = []
+    for attempt in range(3):  # Máximo 3 intentos internos
+        elapsed = tiempo.time() - start_time
+        time_left = max(1, tiempo_max_seg - elapsed)
         
-        while not routing.IsEnd(index):
-            node = manager.IndexToNode(index)
-            route_nodes.append(node)
-            arrival_times.append(solution.Min(time_dimension.CumulVar(index)))
-            next_index = solution.Value(routing.NextVar(index))
-            total_distance += routing.GetArcCostForVehicle(index, next_index, vehicle_id)
-            index = next_index
+        # Ajustar datos en reintentos
+        current_data = data if attempt == 0 else ajustar_restricciones(data, attempt)
+        
+        solution, routing, manager = solve_attempt(current_data, attempt, time_left)
+        
+        if solution:
+            result = extract_solution(solution, routing, manager)
+            if result:
+                return result  # Retorno EXACTO como versión original
+        
+        if tiempo.time() - start_time >= tiempo_max_seg:
+            break
 
-        if route_nodes:  # Solo agregar rutas no vacías
-            routes.append({
-                "vehicle": vehicle_id,
-                "route": route_nodes,
-                "arrival_sec": arrival_times
-            })
+    return None  # Cumple con la interfaz original
 
-    return {
-        "routes": routes,
-        "distance_total_m": total_distance,
-    }
+def ajustar_restricciones(data, attempt):
+    """Función interna para ajustar restricciones en reintentos"""
+    new_data = data.copy()
+    
+    # Ampliar ventanas problemáticas
+    if attempt > 0:
+        new_windows = []
+        for i, (start, end) in enumerate(data["time_windows"]):
+            if i != data["depot"] and (end - start) < 3600:  # Ventanas <1h
+                center = (start + end) // 2
+                new_start = max(SHIFT_START_SEC, center - 90*60)  # ±1.5h
+                new_end = min(SHIFT_END_SEC, center + 90*60)
+                new_windows.append((new_start, new_end))
+            else:
+                new_windows.append((start, end))
+        new_data["time_windows"] = new_windows
+    
+    return new_data
 
     
 # ============= CARGAR PEDIDOS DESDE FIRESTORE =============
