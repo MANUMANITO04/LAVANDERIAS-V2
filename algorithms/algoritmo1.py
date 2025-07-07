@@ -13,6 +13,7 @@ import os
 import math
 import time as tiempo
 from datetime import datetime
+import logging
 
 import streamlit as st
 import pandas as pd
