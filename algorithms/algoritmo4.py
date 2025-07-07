@@ -101,7 +101,7 @@ def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
     }
 
 
-def optimizar_ruta_algoritmo4(data, tiempo_max_seg=45):
+def optimizar_ruta_algoritmo4(data, tiempo_max_seg=240):
     """
     Versión completa con penalizaciones bajas para restricciones
     Inspirado en el enfoque GLS que mencionas funciona en 45 segundos
