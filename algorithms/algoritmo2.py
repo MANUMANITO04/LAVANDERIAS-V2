@@ -49,29 +49,24 @@ def build_route_greedy(data, nodes, depot, tolerancia_seg=600):
 
             w0, w1 = data["time_windows"][nxt]
 
-            # Penalización por tardanza si supera w1
-            lateness = max(0, t_temp - (w1 + tolerancia_seg))
-            if lateness > 0:
-                st.warning(f"Cliente {nxt} se atenderá fuera de su ventana ({t_temp} > {w1} + {tolerancia_seg})")
-
-            # Penalización progresiva por llegar muy tarde
             wait = max(0, w0 - t_temp)
-            score = t_temp + wait + 5 * lateness  # penaliza tardanza con peso 5x
+            lateness = max(0, t_temp - (w1 + tolerancia_seg))
 
-            heappush(heap, (score, nxt, t_temp + wait))
+            # Penalización total: tiempo base + espera + tardanza severa + urgencia
+            ventana_duracion = w1 - w0
+            urgencia = 1 / (ventana_duracion + 1)  # más peso a ventanas cortas
+            score = (
+                t_temp
+                + wait
+                + 20 * lateness         # penaliza fuertemente llegar tarde
+                + 300 * urgencia        # prioriza ventanas que cierran pronto
+            )
 
-        if not heap:
-            st.warning("No se pudo asignar más clientes (heap vacío).")
-            break
+            if lateness > 0:
+                st.warning(f"⚠️ Cliente {nxt} será atendido fuera de ventana ({t_temp}s > {w1}s + tolerancia {tolerancia_seg}s)")
 
-        _, chosen, t_arrival = heappop(heap)
-        route.append(chosen)
-        arrival.append(max(t_arrival, data["time_windows"][chosen][0]))  # ETA es el inicio real del servicio
-        visited.add(chosen)
-        current = chosen
-        t_now = arrival[-1]
+            heappush(heap, (score, nxt, max(t
 
-    return route, arrival, visited
 
 
 
