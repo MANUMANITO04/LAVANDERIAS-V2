@@ -1,5 +1,5 @@
 # algorithms/algoritmo2.py
-# CW + Tabu Search + Exclusión de clientes no compatibles con ventana de tiempo
+# CW + Tabu Search + Exclusión de clientes no compatibles con ventana de tiem po
 
 import time
 from typing import List, Dict, Any, Tuple
