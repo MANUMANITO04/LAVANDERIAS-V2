@@ -101,7 +101,7 @@ def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
     }
 
 
-def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
+def optimizar_ruta_algoritmo4(data, tiempo_max_seg=240):
     """
     Versión optimizada del algoritmo de optimización de rutas con OR-Tools.
     Utiliza LNS (Large Neighborhood Search) con parámetros ajustados para mejor rendimiento.
