@@ -30,7 +30,7 @@ def _check_feasible_and_time(route: List[int], data: Dict[str, Any]) -> Tuple[bo
 
     return True, arrivals
 
-def build_route_greedy(data, nodes, depot, tolerancia_seg=0):
+def build_route_greedy(data, nodes, depot, tolerancia_seg=600):
     visited = set()
     current = depot
     t_now = SHIFT_START_SEC
@@ -48,26 +48,31 @@ def build_route_greedy(data, nodes, depot, tolerancia_seg=0):
                 t_temp += SERVICE_TIME
 
             w0, w1 = data["time_windows"][nxt]
-            # Aceptar siempre, pero mostrar advertencia si excede la ventana + tolerancia
-            if t_temp > w1 + tolerancia_seg:
-                st.warning(f"Cliente {nxt} llegará fuera de ventana ({t_temp} > {w1} + {tolerancia_seg})")
 
+            # Penalización por tardanza si supera w1
+            lateness = max(0, t_temp - (w1 + tolerancia_seg))
+            if lateness > 0:
+                st.warning(f"Cliente {nxt} se atenderá fuera de su ventana ({t_temp} > {w1} + {tolerancia_seg})")
+
+            # Penalización progresiva por llegar muy tarde
             wait = max(0, w0 - t_temp)
-            score = t_temp + wait
+            score = t_temp + wait + 5 * lateness  # penaliza tardanza con peso 5x
+
             heappush(heap, (score, nxt, t_temp + wait))
 
         if not heap:
-            # Si por algún error heap está vacío (no debería pasar), salir igual
+            st.warning("No se pudo asignar más clientes (heap vacío).")
             break
 
         _, chosen, t_arrival = heappop(heap)
         route.append(chosen)
-        arrival.append(t_arrival)
+        arrival.append(max(t_arrival, data["time_windows"][chosen][0]))  # ETA es el inicio real del servicio
         visited.add(chosen)
         current = chosen
-        t_now = t_arrival
+        t_now = arrival[-1]
 
     return route, arrival, visited
+
 
 
 def optimizar_ruta_cw_tabu(data: Dict[str, Any], tiempo_max_seg: int = 60) -> Dict[str, Any]:
