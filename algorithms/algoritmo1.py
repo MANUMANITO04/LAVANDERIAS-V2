@@ -148,11 +148,10 @@ def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
     }
 #
 
-
-def optimizar_ruta_algoritmo22(data, tiempo_max_seg=60):
+def optimizar_ruta_algoritmo22(data, tiempo_max_seg=60, reintento=False):
     """
-    Resuelve un VRPTW (Vehicle Routing Problem with Time Windows) para un solo vehículo
-    usando OR-Tools. Si no encuentra solución, muestra diagnóstico en pantalla.
+    Intenta resolver VRPTW con OR-Tools.
+    Si falla, amplía las ventanas de tiempo y reintenta automáticamente una vez.
     """
     manager = pywrapcp.RoutingIndexManager(
         len(data["distance_matrix"]),
@@ -173,13 +172,13 @@ def optimizar_ruta_algoritmo22(data, tiempo_max_seg=60):
 
     routing.AddDimension(
         transit_cb_idx,
-        slack_max=24 * 3600,
-        capacity=24 * 3600,
-        fix_start_cumul_to_zero=False,
-        name="Time"
+        24 * 3600,
+        24 * 3600,
+        False,
+        "Time"
     )
     time_dim = routing.GetDimensionOrDie("Time")
-    time_dim.SetGlobalSpanCostCoefficient(0)  # sin penalización por makespan
+    time_dim.SetGlobalSpanCostCoefficient(0)
 
     for node, (ini, fin) in enumerate(data["time_windows"]):
         idx = manager.NodeToIndex(node)
@@ -205,16 +204,43 @@ def optimizar_ruta_algoritmo22(data, tiempo_max_seg=60):
 
     if not sol:
         st.warning("❌ No se encontró solución con OR-Tools.")
+
         st.info("🔍 Ventanas de tiempo por nodo:")
+        ventanas_cortas = []
         for node, (ini, fin) in enumerate(data["time_windows"]):
+            dur = fin - ini
             h_ini = f"{ini // 3600:02}:{(ini % 3600) // 60:02}"
             h_fin = f"{fin // 3600:02}:{(fin % 3600) // 60:02}"
             label = "[DEPÓSITO]" if node == data["depot"] else f"Nodo {node}"
-            st.text(f"{label:12} → {h_ini} - {h_fin}")
+            if dur < 45 * 60 and node != data["depot"]:
+                st.error(f"⚠️ {label:12} → {h_ini} - {h_fin}  (solo {dur // 60} min)")
+                ventanas_cortas.append(node)
+            else:
+                st.text(f"{label:12} → {h_ini} - {h_fin}")
 
         st.info("📦 Demandas por nodo:")
         for i, d in enumerate(data["demands"]):
             st.text(f"Nodo {i}: demanda = {d}")
+
+        # Si aún no se ha hecho un reintento, ampliamos las ventanas cortas
+        if not reintento and ventanas_cortas:
+            st.warning("🔄 Intentando nuevamente con márgenes ampliados para nodos conflictivos...")
+
+            nueva_data = data.copy()
+            nuevas_ventanas = []
+            for i, (ini, fin) in enumerate(data["time_windows"]):
+                if i in ventanas_cortas:
+                    centro = (ini + fin) // 2
+                    nuevo_ini = max(0, centro - 3600)
+                    nuevo_fin = min(86400, centro + 3600)
+                    nuevas_ventanas.append((nuevo_ini, nuevo_fin))
+                else:
+                    nuevas_ventanas.append((ini, fin))
+
+            nueva_data["time_windows"] = nuevas_ventanas
+            return optimizar_ruta_algoritmo22(nueva_data, tiempo_max_seg, reintento=True)
+
+        st.error("😕 Sin solución factible. Incluso tras reintentar.")
         return None
 
     rutas = []
@@ -237,11 +263,11 @@ def optimizar_ruta_algoritmo22(data, tiempo_max_seg=60):
             "arrival_sec": llegada
         })
 
+    st.success("✅ Ruta encontrada con éxito.")
     return {
         "routes": rutas,
         "distance_total_m": dist_total_m
     }
-
 
 
 
