@@ -147,12 +147,12 @@ def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
         "depot": 0,
     }
 #
-import logging
+
 
 def optimizar_ruta_algoritmo22(data, tiempo_max_seg=60):
     """
-    Resuelve un VRPTW para un solo vehículo usando OR-Tools.
-    Si no encuentra solución, imprime diagnóstico de las ventanas y demandas.
+    Resuelve un VRPTW (Vehicle Routing Problem with Time Windows) para un solo vehículo
+    usando OR-Tools. Si no encuentra solución, muestra diagnóstico en pantalla.
     """
     manager = pywrapcp.RoutingIndexManager(
         len(data["distance_matrix"]),
@@ -164,7 +164,7 @@ def optimizar_ruta_algoritmo22(data, tiempo_max_seg=60):
     def time_cb(from_index, to_index):
         i = manager.IndexToNode(from_index)
         j = manager.IndexToNode(to_index)
-        travel  = data["duration_matrix"][i][j]
+        travel = data["duration_matrix"][i][j]
         service = SERVICE_TIME if i != data["depot"] else 0
         return travel + service
 
@@ -173,13 +173,13 @@ def optimizar_ruta_algoritmo22(data, tiempo_max_seg=60):
 
     routing.AddDimension(
         transit_cb_idx,
-        slack_max=24*3600,
-        capacity=24*3600,
+        slack_max=24 * 3600,
+        capacity=24 * 3600,
         fix_start_cumul_to_zero=False,
         name="Time"
     )
     time_dim = routing.GetDimensionOrDie("Time")
-    time_dim.SetGlobalSpanCostCoefficient(0)  # quitar penalización por makespan
+    time_dim.SetGlobalSpanCostCoefficient(0)  # sin penalización por makespan
 
     for node, (ini, fin) in enumerate(data["time_windows"]):
         idx = manager.NodeToIndex(node)
@@ -191,9 +191,9 @@ def optimizar_ruta_algoritmo22(data, tiempo_max_seg=60):
     if any(data["demands"]):
         def demand_cb(from_index):
             return data["demands"][manager.IndexToNode(from_index)]
-        dem_cb_idx = routing.RegisterUnaryTransitCallback(demand_cb)
+        demand_cb_idx = routing.RegisterUnaryTransitCallback(demand_cb)
         routing.AddDimensionWithVehicleCapacity(
-            dem_cb_idx, 0, data["vehicle_capacities"], True, "Capacity"
+            demand_cb_idx, 0, data["vehicle_capacities"], True, "Capacity"
         )
 
     params = pywrapcp.DefaultRoutingSearchParameters()
@@ -203,23 +203,19 @@ def optimizar_ruta_algoritmo22(data, tiempo_max_seg=60):
 
     sol = routing.SolveWithParameters(params)
 
-   if not sol:
-    import logging
-    logging.warning("❌ No se encontró solución con OR-Tools.")
-    logging.info("🔍 Ventanas de tiempo por nodo:")
+    if not sol:
+        st.warning("❌ No se encontró solución con OR-Tools.")
+        st.info("🔍 Ventanas de tiempo por nodo:")
+        for node, (ini, fin) in enumerate(data["time_windows"]):
+            h_ini = f"{ini // 3600:02}:{(ini % 3600) // 60:02}"
+            h_fin = f"{fin // 3600:02}:{(fin % 3600) // 60:02}"
+            label = "[DEPÓSITO]" if node == data["depot"] else f"Nodo {node}"
+            st.text(f"{label:12} → {h_ini} - {h_fin}")
 
-    for node, (ini, fin) in enumerate(data["time_windows"]):
-        h_ini = f"{ini // 3600:02}:{(ini % 3600) // 60:02}"
-        h_fin = f"{fin // 3600:02}:{(fin % 3600) // 60:02}"
-        label = "[DEPÓSITO]" if node == data["depot"] else f"Nodo {node}"
-        logging.info(f"  {label:12} → {h_ini} - {h_fin}")
-
-    logging.info("📦 Demandas por nodo:")
-    for i, d in enumerate(data["demands"]):
-        logging.info(f"  Nodo {i}: demanda = {d}")
-
-    return None
-
+        st.info("📦 Demandas por nodo:")
+        for i, d in enumerate(data["demands"]):
+            st.text(f"Nodo {i}: demanda = {d}")
+        return None
 
     rutas = []
     dist_total_m = 0
@@ -227,7 +223,7 @@ def optimizar_ruta_algoritmo22(data, tiempo_max_seg=60):
         idx = routing.Start(v)
         route, llegada = [], []
         while not routing.IsEnd(idx):
-            n   = manager.IndexToNode(idx)
+            n = manager.IndexToNode(idx)
             nxt = sol.Value(routing.NextVar(idx))
             dest = manager.IndexToNode(nxt)
             dist_total_m += data["distance_matrix"][n][dest]
@@ -236,15 +232,18 @@ def optimizar_ruta_algoritmo22(data, tiempo_max_seg=60):
             idx = nxt
 
         rutas.append({
-            "vehicle":      v,
-            "route":        route,
-            "arrival_sec":  llegada
+            "vehicle": v,
+            "route": route,
+            "arrival_sec": llegada
         })
 
     return {
-        "routes":          rutas,
+        "routes": rutas,
         "distance_total_m": dist_total_m
     }
+
+
+
 
 
 
