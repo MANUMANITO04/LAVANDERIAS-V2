@@ -180,7 +180,7 @@ def optimizar_ruta_cp_sat(data, tiempo_max_seg=60):
     routing.AddDimension(
         time_callback_index,
         5 * 60 * 60,   # holgura (buffer entre visitas)
-        24 * 3600,     # tiempo total máximo por ruta
+        30 * 3600,     # tiempo total máximo por ruta
         False,
         "Time"
     )
