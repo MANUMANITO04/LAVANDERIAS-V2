@@ -178,7 +178,7 @@ def optimizar_ruta_algoritmo22(data, tiempo_max_seg=60, reintento=False):
         "Time"
     )
     time_dim = routing.GetDimensionOrDie("Time")
-    time_dim.SetGlobalSpanCostCoefficient(0)
+    time_dim.SetGlobalSpanCostCoefficient(1000)
 
     for node, (ini, fin) in enumerate(data["time_windows"]):
         idx = manager.NodeToIndex(node)
