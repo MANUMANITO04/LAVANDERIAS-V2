@@ -1,4 +1,15 @@
-import decode_polyline
+# features/rutas3.py
+
+import streamlit as st
+import pandas as pd
+from datetime import datetime
+import time as tiempo
+
+import firebase_admin
+from firebase_admin import credentials, firestore
+
+import googlemaps
+from googlemaps.convert import decode_polyline
 
 import folium
 from streamlit_folium import st_folium
@@ -335,4 +346,4 @@ def ver_ruta_optimizada():
         st.markdown(f"- Tiempo de cómputo: **{st.session_state['solve_t']:.2f} s**")
         tiempo_total_min = (max(res["routes"][0]["arrival_sec"]) - 9*3600) / 60
         st.markdown(f"- Tiempo estimado total: **{tiempo_total_min:.2f} min**")
-        st.markdown(f"- Puntos visitados: **{len(ruta)}
+        st.markdown(f"- Puntos visitados: **{len(ruta)}**")
