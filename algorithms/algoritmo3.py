@@ -140,119 +140,133 @@ def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
 # Función para obtener geometría de ruta con Directions API
 @st.cache_data(ttl=3600)
 # Algoritmo 3: CP-SAT
-def optimizar_ruta_cp_sat(data, tiempo_max_seg=45):
-    # Si no se definieron tiempos de servicio, asumir 10 minutos por nodo
+def optimizar_ruta_cp_sat(data, tiempo_max_seg=60):
     if "service_times" not in data:
-        data["service_times"] = [10 * 60] * len(data["duration_matrix"])
-    # Si la matriz de tiempos tiene solo ceros, generarla a partir de la distancia
+        data["service_times"] = [13 * 60] * len(data["duration_matrix"])
+
+    # Si no hay duración, calcular a partir de distancia
     if all(all(t == 0 for t in fila) for fila in data["duration_matrix"]):
         st.write("⚠️ Matriz de tiempos vacía o con ceros. Generando nueva matriz basada en distancia...")
-
-        # Suponiendo velocidad de 15 km/h = 4.17 m/s
-        velocidad_mps = 15 * 1000 / 3600
-
+        velocidad_mps = 20 * 1000 / 3600
         data["duration_matrix"] = [
             [int(dist / velocidad_mps) for dist in fila]
             for fila in data["distance_matrix"]
         ]
+
+    # Configuración del modelo
     manager = pywrapcp.RoutingIndexManager(len(data["duration_matrix"]), data["num_vehicles"], data["depot"])
     routing = pywrapcp.RoutingModel(manager)
-    for node in range(1, manager.GetNumberOfNodes()):
-        routing.AddDisjunction([manager.NodeToIndex(node)], 1000000)  # Penalidad alta por omitir
 
-    # Costo: distancia
+    # Callback: distancia
     def distance_callback(from_index, to_index):
         from_node = manager.IndexToNode(from_index)
         to_node = manager.IndexToNode(to_index)
         return data["distance_matrix"][from_node][to_node]
-    
+
     transit_callback_index = routing.RegisterTransitCallback(distance_callback)
     routing.SetArcCostEvaluatorOfAllVehicles(transit_callback_index)
 
-    # Ventanas de tiempo
+    # Callback: tiempo de viaje + servicio
     def time_callback(from_index, to_index):
         from_node = manager.IndexToNode(from_index)
         to_node = manager.IndexToNode(to_index)
-        return data["duration_matrix"][from_node][to_node]
-    
+        travel_time = data["duration_matrix"][from_node][to_node]
+        service_time = data["service_times"][from_node]
+        return travel_time + service_time
+
     time_callback_index = routing.RegisterTransitCallback(time_callback)
 
+    # Dimensión de tiempo (respetará tiempo de viaje + servicio)
     routing.AddDimension(
         time_callback_index,
-        60 * 60,  # holgura: 60 minutos
-        24 * 3600,  # tiempo máximo: 12 horas
+        3 * 60 * 60,   # holgura (buffer entre visitas)
+        24 * 3600,     # tiempo total máximo por ruta
         False,
         "Time"
     )
     time_dimension = routing.GetDimensionOrDie("Time")
 
-    # Iniciar a las 9:00 AM
-    # Forzar salida desde el depósito exactamente a las 9:00 AM
-    start_depot = 9 * 3600
+    # Penalizar slack (tiempo de espera entre visitas)
+    for node_idx in range(len(data["duration_matrix"])):
+        index = manager.NodeToIndex(node_idx)
+        slack_var = time_dimension.SlackVar(index)
+        routing.AddVariableMinimizedByFinalizer(slack_var)
+
+    # Fijar hora de inicio en el depósito (ej. 9:00 am)
     index_depot = manager.NodeToIndex(data["depot"])
-    time_dimension.CumulVar(index_depot).SetRange(start_depot, start_depot)
+    time_dimension.CumulVar(index_depot).SetRange(9 * 3600, 9 * 3600 + 900)
 
-    # Aplicar ventanas a cada nodo
-    for location_idx, (start, end) in enumerate(data["time_windows"]):
-        index = manager.NodeToIndex(location_idx)
+     # Aplicar ventanas estrictas
+    for i, (start, end) in enumerate(data["time_windows"]):
+        index = manager.NodeToIndex(i)
         time_dimension.CumulVar(index).SetRange(start, end)
+        # ⬇️ Tiempo obligatorio de espera/servicio en ese nodo
+        # time_dimension.SlackVar(index).SetValue(data["service_times"][i])
+        # Penalizar llegar antes del inicio (tiempo muerto)
+        time_dimension.SetCumulVarSoftUpperBound(index, start, 5000)
+        # Minimizar slack por nodo
+        routing.AddVariableMinimizedByFinalizer(time_dimension.SlackVar(index))
 
-    # Asignar tiempo de servivio
-    for location_idx, service_time in enumerate(data["service_times"]):
-        index = manager.NodeToIndex(location_idx)
-        time_dimension.SlackVar(index).SetValue(service_time)
-        if service_time > (data["time_windows"][location_idx][1] - data["time_windows"][location_idx][0]):
-            st.write(f"⚠️ Tiempo de servicio ({service_time}s) mayor que la ventana en punto {location_idx}")
+    # Minimizar tiempo total por ruta (fin del recorrido)
+    for v in range(data["num_vehicles"]):
+        end_index = routing.End(v)
+        routing.AddVariableMinimizedByFinalizer(time_dimension.CumulVar(end_index))
 
+    # Verificar si alguna ventana es muy ajustada
     for i, (start, end) in enumerate(data["time_windows"]):
         service = data["service_times"][i]
-        posibles = data["duration_matrix"][data["depot"]]  # desde depósito
-        min_travel = posibles[i] if i != data["depot"] else 0
-        if end - start < service + min_travel:
-            st.error(f"🚫 Punto {i}: ventana insuficiente para viaje ({min_travel}s) + servicio ({service}s)")
+        travel = data["duration_matrix"][data["depot"]][i]
+        if end - start < service + travel:
+            st.warning(f"⚠️ Nodo {i}: ventana puede ser muy ajustada para viajar y atender")
 
-
-    # Parámetros de busqueda
+    # Configurar parámetros del solver
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
     search_parameters.time_limit.seconds = tiempo_max_seg
-    search_parameters.first_solution_strategy = (
-    routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION)
-    search_parameters.local_search_metaheuristic = (
-    routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH)
+    search_parameters.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PARALLEL_CHEAPEST_INSERTION
+    search_parameters.local_search_metaheuristic = routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
     search_parameters.log_search = True
 
+    # Resolver
     sol = routing.SolveWithParameters(search_parameters)
 
     if not sol:
+        st.error("🚫 No se encontró una solución factible.")
         return None
 
-    # 6) RECONSTRUIR RUTAS y SUMAR DISTANCIA real
-    rutas = []
+    # Procesar solución
+    arrival_sec_all_nodes = [None] * len(data["duration_matrix"])
     dist_total_m = 0
+    rutas = []
+
     for v in range(data["num_vehicles"]):
         idx = routing.Start(v)
         route, llegada = [], []
         while not routing.IsEnd(idx):
-            n   = manager.IndexToNode(idx)
+            n = manager.IndexToNode(idx)
             nxt = sol.Value(routing.NextVar(idx))
-            # sumamos metros de la matriz original
             dest = manager.IndexToNode(nxt)
+
+            # Distancia total
             dist_total_m += data["distance_matrix"][n][dest]
 
-            # construimos la ruta y tiempos
+            # Hora de llegada
+            arrival_time = sol.Value(time_dimension.CumulVar(idx))
+            arrival_sec_all_nodes[n] = arrival_time
             route.append(n)
-            llegada.append(sol.Min(time_dimension.CumulVar(idx)))
+            llegada.append(arrival_time)
+
             idx = nxt
 
         rutas.append({
-            "vehicle":      v,
-            "route":        route,
-            "arrival_sec":  llegada
+            "vehicle": v,
+            "route": route,
+            "arrival_sec": llegada
         })
 
     return {
-        "routes":          rutas,
-        "distance_total_m": dist_total_m
+        "routes": rutas,
+        "distance_total_m": dist_total_m,
+        "arrival_sec_all_nodes": arrival_sec_all_nodes
     }
     
 def agregar_ventana_margen(df, margen_segundos=15*60):
