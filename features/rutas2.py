@@ -67,9 +67,12 @@ def cargar_ruta(fecha):
     except Exception as e:
         st.error(f"Error al cargar datos: {e}")
         return []"""
-
 @st.cache_data(ttl=300)
 def cargar_ruta(fecha):
+    """
+    Carga las rutas de recogida y entrega desde la base de datos para una fecha específica.
+    Retorna una lista de dict con los campos necesarios.
+    """
     try:
         fecha_str = fecha.strftime("%Y-%m-%d")
         query = db.collection('recogidas')
@@ -94,7 +97,10 @@ def cargar_ruta(fecha):
                     "fecha": data.get("fecha_recojo"),
                 })
 
-            if data.get("fecha_entrega") == fecha_str and data.get("fecha_entrega") != data.get("fecha_recojo"):
+            if (
+                data.get("fecha_entrega") == fecha_str
+                and data.get("fecha_entrega") != data.get("fecha_recojo")
+            ):
                 datos.append({
                     "id": doc_id,
                     "operacion": "Entrega",
@@ -113,7 +119,6 @@ def cargar_ruta(fecha):
     except Exception as e:
         st.error(f"Error al cargar datos: {e}")
         return []
-
 
 def datos_ruta():
     col1, col2 = st.columns([1, 3])
