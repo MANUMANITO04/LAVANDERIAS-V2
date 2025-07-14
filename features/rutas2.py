@@ -20,6 +20,53 @@ from core.geo_utils import obtener_sugerencias_direccion, obtener_direccion_desd
 gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
 
 
+    st.markdown("### 📤 Subir CSV para importar Deliveries")
+
+    archivo_csv = st.file_uploader("Selecciona el archivo CSV", type=["csv"])
+    if archivo_csv is not None:
+        try:
+            df_csv = pd.read_csv(archivo_csv)
+
+            st.success(f"Archivo cargado con {len(df_csv)} filas.")
+            if st.checkbox("📦 Mostrar datos del archivo cargado"):
+                st.dataframe(df_csv)
+
+            if st.button("⬆️ Subir a Firebase"):
+                contador = 0
+                for _, fila in df_csv.iterrows():
+                    try:
+                        data = {
+                            "tipo_solicitud": fila["tipo_solicitud"],
+                            "telefono": str(fila["telefono"]),
+                            "nombre_cliente": fila["nombre_cliente"],
+                            "sucursal": fila.get("sucursal", ""),
+                            "fecha_entrega": fila["fecha"],
+                            "fecha_recojo": fila["fecha"],
+                            "direccion_entrega": fila["direccion"],
+                            "direccion_recojo": fila["direccion"],
+                            "hora_recojo": "12:00:00",  # Puedes personalizar esto si el CSV lo trae
+                            "coordenadas_entrega": {
+                                "lat": float(fila["coordenadas.lat"]),
+                                "lon": float(fila["coordenadas.lon"]),
+                            },
+                            "coordenadas_recojo": {
+                                "lat": float(fila["coordenadas.lat"]),
+                                "lon": float(fila["coordenadas.lon"]),
+                            }
+                        }
+                        db.collection("recogidas").add(data)
+                        contador += 1
+                    except Exception as e:
+                        st.error(f"Error en fila {_ + 2}: {e}")
+
+                st.success(f"Se subieron {contador} registros correctamente.")
+                st.cache_data.clear()
+                st.rerun()
+
+        except Exception as e:
+            st.error(f"No se pudo procesar el archivo: {e}")
+
+
 @st.cache_data(ttl=300)
 def cargar_ruta(fecha):
     """
