@@ -20,7 +20,7 @@ from core.geo_utils import obtener_sugerencias_direccion, obtener_direccion_desd
 gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
 
 
-@st.cache_data(ttl=300)
+#@st.cache_data(ttl=300)
 """def cargar_ruta(fecha):
     """
     #Carga las rutas de recogida y entrega desde la base de datos para una fecha específica.
@@ -117,6 +117,7 @@ def cargar_ruta(fecha):
     except Exception as e:
         st.error(f"Error al cargar datos: {e}")
         return []
+
 
 
 import streamlit as st
