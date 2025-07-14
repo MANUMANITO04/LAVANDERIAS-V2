@@ -181,15 +181,15 @@ def ver_ruta_optimizada():
         "ventana_con_margen": vent_coch,
         "ETA": COCHERA["hora"]
     })
-    """dep = df_r[df_r["orden"] == 0].iloc[0]
+    dep = df_r[df_r["orden"] == 0].iloc[0]
     filas.append({
         "orden": 1,
         "nombre_cliente": dep["nombre_cliente"],
         "direccion": dep["direccion"],
         "ventana_con_margen": dep["ventana_con_margen"],
         "ETA": dep["ETA"]
-    })"""
-    for _, row in df_r[df_r["orden"] >= 0].sort_values("orden").iterrows():
+    })
+    for _, row in df_r[df_r["orden"] >= 1].sort_values("orden").iterrows():
         filas.append({
             "orden": int(row["orden"]) + 1,
             "nombre_cliente": row["nombre_cliente"],
