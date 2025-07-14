@@ -104,7 +104,7 @@ def datos_ruta():
             selected = st.selectbox("Seleccionar operación:", options=opciones.keys())
             delivery_data = opciones[selected]
 
-            st.markdown(f"### Hora de {delivery_data['operacion']}")
+"""            st.markdown(f"### Hora de {delivery_data['operacion']}")
             hora_col1, hora_col2 = st.columns([4, 1])
             with hora_col1:
                 horas_sugeridas = [f"{h:02d}:{m:02d}" for h in range(7, 19) for m in (0, 30)]
@@ -136,6 +136,61 @@ def datos_ruta():
                         st.cache_data.clear()
                         time.sleep(1)
                         st.rerun()
+                    except ValueError:
+                        st.error("Formato inválido. Use HH:MM")
+                    except Exception as e:
+                        st.error(f"Error: {e}")"""
+            st.markdown(f"### Hora de {delivery_data['operacion']}")
+
+            hora_col1, hora_col2 = st.columns([4, 1])
+            with hora_col1:
+                horas_sugeridas = [f"{h:02d}:{m:02d}" for h in range(7, 19) for m in (0, 30)]
+                hora_actual = delivery_data.get("hora")
+            
+                if hora_actual and hora_actual[:5] not in horas_sugeridas:
+                    horas_sugeridas.append(hora_actual[:5])
+                    horas_sugeridas.sort()
+            
+                opciones_hora = ["-- Sin asignar --"] + horas_sugeridas
+                if hora_actual and hora_actual[:5] in horas_sugeridas:
+                    index_hora = opciones_hora.index(hora_actual[:5])
+                else:
+                    index_hora = 0
+            
+                nueva_hora = st.selectbox(
+                    "Seleccionar o escribir hora (HH:MM):",
+                    options=opciones_hora,
+                    index=index_hora,
+                    key=f"hora_combobox_{delivery_data['id']}"
+                )
+            
+            with hora_col2:
+                st.write("")
+                st.write("")
+                if st.button("💾 Guardar", key=f"guardar_btn_{delivery_data['id']}"):
+                    try:
+                        campo_hora = "hora_recojo" if delivery_data["operacion"] == "Recojo" else "hora_entrega"
+                        if nueva_hora == "-- Sin asignar --":
+                            db.collection('recogidas').document(delivery_data["id"]).update({
+                                campo_hora: None
+                            })
+                            st.success("Hora eliminada")
+                        else:
+                            if len(nueva_hora.split(":")) != 2:
+                                raise ValueError
+                            hora, minutos = map(int, nueva_hora.split(":"))
+                            if not (0 <= hora < 24 and 0 <= minutos < 60):
+                                raise ValueError
+            
+                            db.collection('recogidas').document(delivery_data["id"]).update({
+                                campo_hora: f"{hora:02d}:{minutos:02d}:00"
+                            })
+                            st.success("Hora actualizada")
+            
+                        st.cache_data.clear()
+                        time.sleep(1)
+                        st.rerun()
+            
                     except ValueError:
                         st.error("Formato inválido. Use HH:MM")
                     except Exception as e:
