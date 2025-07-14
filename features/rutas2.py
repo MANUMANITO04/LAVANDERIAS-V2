@@ -22,20 +22,20 @@ gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
 @st.cache_data(ttl=300)
 def cargar_ruta(fecha):
     """
-    #Carga las rutas de recogida y entrega desde la base de datos para una fecha específica.
-    #Retorna una lista de dict con los campos necesarios.
+    Carga las rutas de recogida y entrega desde la base de datos para una fecha específica.
+    Retorna una lista de dict con los campos necesarios.
     """
     try:
+        fecha_str = fecha.strftime("%Y-%m-%d")
         query = db.collection('recogidas')
-        docs = list(query.where("fecha_recojo", "==", fecha.strftime("%Y-%m-%d")).stream()) + \
-               list(query.where("fecha_entrega", "==", fecha.strftime("%Y-%m-%d")).stream())
+        docs = list(query.stream())  # Traemos todos para controlar duplicación
 
         datos = []
         for doc in docs:
             data = doc.to_dict()
             doc_id = doc.id
-            
-            if data.get("fecha_recojo") == fecha.strftime("%Y-%m-%d"):
+
+            if data.get("fecha_recojo") == fecha_str:
                 datos.append({
                     "id": doc_id,
                     "operacion": "Recojo",
@@ -48,8 +48,9 @@ def cargar_ruta(fecha):
                     "coordenadas": data.get("coordenadas_recojo", {"lat": -16.409047, "lon": -71.537451}),
                     "fecha": data.get("fecha_recojo"),
                 })
-            
-            if data.get("fecha_entrega") == fecha.strftime("%Y-%m-%d"):
+
+            # Solo agregar como entrega si no es la misma fecha que recojo
+            if data.get("fecha_entrega") == fecha_str and data.get("fecha_entrega") != data.get("fecha_recojo"):
                 datos.append({
                     "id": doc_id,
                     "operacion": "Entrega",
@@ -67,6 +68,7 @@ def cargar_ruta(fecha):
     except Exception as e:
         st.error(f"Error al cargar datos: {e}")
         return []
+
 
 
             
