@@ -23,8 +23,8 @@ gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
 @st.cache_data(ttl=300)
 """def cargar_ruta(fecha):
     """
-    Carga las rutas de recogida y entrega desde la base de datos para una fecha específica.
-    Retorna una lista de dict con los campos necesarios.
+    #Carga las rutas de recogida y entrega desde la base de datos para una fecha específica.
+    #Retorna una lista de dict con los campos necesarios.
     """
     try:
         query = db.collection('recogidas')
