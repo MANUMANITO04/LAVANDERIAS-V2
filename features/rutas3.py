@@ -121,7 +121,7 @@ def ver_ruta_optimizada():
             "time_end": "18:00",
             "demand": 0
         }
-        df_final = pd.concat([pd.DataFrame(df_clusters], ignore_index=True)
+        df_final = pd.concat([pd.DataFrame([DEP]), df_clusters], ignore_index=True)
         st.session_state["df_final"] = df_final.copy()
 
         # — DEBUG: imprime las ventanas de tiempo —
