@@ -69,6 +69,7 @@ gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
         st.error(f"Error al cargar datos: {e}")
         return []"""
 
+
 @st.cache_data(ttl=300)
 def cargar_ruta(fecha):
     try:
@@ -118,70 +119,6 @@ def cargar_ruta(fecha):
         st.error(f"Error al cargar datos: {e}")
         return []
 
-
-
-import streamlit as st
-import pandas as pd
-from io import BytesIO
-from datetime import datetime, timedelta
-import firebase_admin
-from firebase_admin import credentials, firestore
-from core.firebase import db
-from core.constants import GOOGLE_MAPS_API_KEY, PUNTOS_FIJOS_COMPLETOS
-import requests
-from googlemaps.convert import decode_polyline
-from streamlit_folium import st_folium
-import folium
-import time
-import googlemaps
-from core.firebase import db, obtener_sucursales
-from core.geo_utils import obtener_sugerencias_direccion, obtener_direccion_desde_coordenadas
-
-gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
-
-@st.cache_data(ttl=300)
-def cargar_ruta(fecha):
-    try:
-        query = db.collection('recogidas')
-        docs = list(query.where("fecha_recojo", "==", fecha.strftime("%Y-%m-%d")).stream()) +                list(query.where("fecha_entrega", "==", fecha.strftime("%Y-%m-%d")).stream())
-
-        datos = []
-        for doc in docs:
-            data = doc.to_dict()
-            doc_id = doc.id
-
-            if data.get("fecha_recojo") == fecha.strftime("%Y-%m-%d"):
-                datos.append({
-                    "id": doc_id,
-                    "operacion": "Recojo",
-                    "nombre_cliente": data.get("nombre_cliente"),
-                    "sucursal": data.get("sucursal"),
-                    "direccion": data.get("direccion_recojo", "N/A"),
-                    "telefono": data.get("telefono", "N/A"),
-                    "hora": data.get("hora_recojo", ""),
-                    "tipo_solicitud": data.get("tipo_solicitud"),
-                    "coordenadas": data.get("coordenadas_recojo", {"lat": -16.409047, "lon": -71.537451}),
-                    "fecha": data.get("fecha_recojo"),
-                })
-
-            if data.get("fecha_entrega") == fecha.strftime("%Y-%m-%d"):
-                datos.append({
-                    "id": doc_id,
-                    "operacion": "Entrega",
-                    "nombre_cliente": data.get("nombre_cliente"),
-                    "sucursal": data.get("sucursal"),
-                    "direccion": data.get("direccion_entrega", "N/A"),
-                    "telefono": data.get("telefono", "N/A"),
-                    "hora": data.get("hora_entrega", ""),
-                    "tipo_solicitud": data.get("tipo_solicitud"),
-                    "coordenadas": data.get("coordenadas_entrega", {"lat": -16.409047, "lon": -71.537451}),
-                    "fecha": data.get("fecha_entrega"),
-                })
-
-        return datos
-    except Exception as e:
-        st.error(f"Error al cargar datos: {e}")
-        return []
 
 def datos_ruta():
     col1, col2 = st.columns([1, 3])
