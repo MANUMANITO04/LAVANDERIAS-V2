@@ -303,9 +303,9 @@ def datos_ruta():
                         "coordenadas_recojo": {"lat": lat, "lon": lon},
                         "coordenadas_entrega": {"lat": lat, "lon": lon},
                         "direccion_recojo": direccion,
-                        "direccion_entrega": direccion,
+                        "direccion_entrega": None,
                         "fecha_recojo": fecha,
-                        "fecha_entrega": fecha,
+                        "fecha_entrega": None,
                         "hora_recojo": None,
                         "hora_entrega": None
                     }
