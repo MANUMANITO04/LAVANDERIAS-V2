@@ -68,7 +68,26 @@ def cargar_ruta(fecha):
         st.error(f"Error al cargar datos: {e}")
         return []
 
+st.markdown("---")
+    st.subheader("❌ Eliminar rutas del día")
 
+    if st.button("🗑️ Eliminar todas las rutas de esta fecha"):
+        try:
+            fecha_str = fecha_seleccionada.strftime("%Y-%m-%d")
+            recojo_docs = list(db.collection("recogidas").where("fecha_recojo", "==", fecha_str).stream())
+            entrega_docs = list(db.collection("recogidas").where("fecha_entrega", "==", fecha_str).stream())
+            todos_ids = set([doc.id for doc in recojo_docs + entrega_docs])
+
+            for doc_id in todos_ids:
+                db.collection("recogidas").document(doc_id).delete()
+
+            st.success(f"✅ Se eliminaron {len(todos_ids)} documentos de la fecha {fecha_str}.")
+            st.cache_data.clear()
+            time.sleep(2)
+            st.rerun()
+        except Exception as e:
+            st.error(f"❌ Error al eliminar rutas: {e}")
+            
 def datos_ruta():
     col1, col2 = st.columns([1, 3])
     with col1:
@@ -264,6 +283,7 @@ def datos_ruta():
     else:
         st.info("No hay datos para la fecha seleccionada con los filtros actuales.")
 
+    
     # -----------------------------------------------
     # 📤 CARGA DE CSV A FIRESTORE
     # -----------------------------------------------
