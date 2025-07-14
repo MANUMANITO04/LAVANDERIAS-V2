@@ -80,9 +80,6 @@ def cargar_ruta(fecha):
             data = doc.to_dict()
             doc_id = doc.id
 
-            # Marcar si ya se agregó por recojo o entrega
-            ya_agregado = False
-
             if data.get("fecha_recojo") == fecha_str:
                 datos.append({
                     "id": doc_id,
@@ -96,7 +93,6 @@ def cargar_ruta(fecha):
                     "coordenadas": data.get("coordenadas_recojo", {"lat": -16.409047, "lon": -71.537451}),
                     "fecha": data.get("fecha_recojo"),
                 })
-                ya_agregado = True
 
             if data.get("fecha_entrega") == fecha_str and data.get("fecha_entrega") != data.get("fecha_recojo"):
                 datos.append({
@@ -113,11 +109,10 @@ def cargar_ruta(fecha):
                 })
 
         return datos
+
     except Exception as e:
         st.error(f"Error al cargar datos: {e}")
         return []
-
-
 
 
 def datos_ruta():
