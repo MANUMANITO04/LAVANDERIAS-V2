@@ -1,153 +1,141 @@
-
 import streamlit as st
 import pandas as pd
-from io import BytesIO
-from datetime import datetime, timedelta
+from datetime import datetime
+import time as tiempo
+
 import firebase_admin
 from firebase_admin import credentials, firestore
-from core.firebase import db
-from core.constants import GOOGLE_MAPS_API_KEY, PUNTOS_FIJOS_COMPLETOS
-import requests
-from googlemaps.convert import decode_polyline
-from streamlit_folium import st_folium
-import folium
-import time
+
 import googlemaps
-from core.firebase import db, obtener_sucursales
-from core.geo_utils import obtener_sugerencias_direccion, obtener_direccion_desde_coordenadas
+from googlemaps.convert import decode_polyline
+
+import folium
+from streamlit_folium import st_folium
+
+from core.firebase import db
+from core.constants import GOOGLE_MAPS_API_KEY
+
+from algorithms.algoritmo1 import optimizar_ruta_algoritmo22, cargar_pedidos, _crear_data_model, agrupar_puntos_aglomerativo, MARGEN
+from algorithms.algoritmo2 import optimizar_ruta_cw_tabu
+from algorithms.algoritmo3 import optimizar_ruta_cp_sat
+from algorithms.algoritmo4 import optimizar_ruta_algoritmo4
+
+COCHERA = {
+    "lat": -16.4141434959913,
+    "lon": -71.51839574233342,
+    "direccion": "Cochera",
+    "hora": "08:00",
+}
 
 gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
 
-@st.cache_data(ttl=300)
-def cargar_ruta(fecha):
+ALG_MAP = {
+    "Algoritmo 1 - PCA - GLS": optimizar_ruta_algoritmo22,
+    "Algoritmo 2 - Clarke Wrigth + Tabu Search": optimizar_ruta_cw_tabu,
+    "Algoritmo 3 - CP - SAT": optimizar_ruta_cp_sat,
+    "Algoritmo 4 - PAC + LNS": optimizar_ruta_algoritmo4,
+}
+
+def _hora_a_segundos(hhmm: str) -> int | None:
+    if not isinstance(hhmm, str):
+        return None
+    parts = hhmm.split(":")
+    if len(parts) < 2:
+        return None
     try:
-        query = db.collection('recogidas')
-        docs = list(query.where("fecha_recojo", "==", fecha.strftime("%Y-%m-%d")).stream()) +                list(query.where("fecha_entrega", "==", fecha.strftime("%Y-%m-%d")).stream())
+        h = int(parts[0])
+        m = int(parts[1])
+        return h * 3600 + m * 60
+    except:
+        return None
 
-        datos = []
-        for doc in docs:
-            data = doc.to_dict()
-            doc_id = doc.id
+def _segundos_a_hora(segs: int) -> str:
+    h = segs // 3600
+    m = (segs % 3600) // 60
+    return f"{h:02}:{m:02}"
 
-            if data.get("fecha_recojo") == fecha.strftime("%Y-%m-%d"):
-                datos.append({
-                    "id": doc_id,
-                    "operacion": "Recojo",
-                    "nombre_cliente": data.get("nombre_cliente"),
-                    "sucursal": data.get("sucursal"),
-                    "direccion": data.get("direccion_recojo", "N/A"),
-                    "telefono": data.get("telefono", "N/A"),
-                    "hora": data.get("hora_recojo", ""),
-                    "tipo_solicitud": data.get("tipo_solicitud"),
-                    "coordenadas": data.get("coordenadas_recojo", {"lat": -16.409047, "lon": -71.537451}),
-                    "fecha": data.get("fecha_recojo"),
-                })
+def _ventana_extendida(row: pd.Series) -> str:
+    ini = _hora_a_segundos(row["time_start"])
+    fin = _hora_a_segundos(row["time_end"])
+    if ini is None or fin is None:
+        return "No especificado"
+    ini_m = max(0, ini - MARGEN)
+    fin_m = min(24 * 3600, fin + MARGEN)
+    return f"{_segundos_a_hora(ini_m)} - {_segundos_a_hora(fin_m)}"
 
-            if data.get("fecha_entrega") == fecha.strftime("%Y-%m-%d"):
-                datos.append({
-                    "id": doc_id,
-                    "operacion": "Entrega",
-                    "nombre_cliente": data.get("nombre_cliente"),
-                    "sucursal": data.get("sucursal"),
-                    "direccion": data.get("direccion_entrega", "N/A"),
-                    "telefono": data.get("telefono", "N/A"),
-                    "hora": data.get("hora_entrega", ""),
-                    "tipo_solicitud": data.get("tipo_solicitud"),
-                    "coordenadas": data.get("coordenadas_entrega", {"lat": -16.409047, "lon": -71.537451}),
-                    "fecha": data.get("fecha_entrega"),
-                })
+# ---- FUNCION PRINCIPAL ----
+def ver_ruta_optimizada():
+    st.title("🚚 Ver Ruta Optimizada")
+    c1, c2 = st.columns(2)
+    with c1:
+        fecha = st.date_input("Fecha", value=datetime.now().date())
+    with c2:
+        algoritmo = st.selectbox("Algoritmo", list(ALG_MAP.keys()))
 
-        return datos
-    except Exception as e:
-        st.error(f"Error al cargar datos: {e}")
-        return []
+    if (st.session_state.get("fecha_actual") != fecha or
+        st.session_state.get("algoritmo_actual") != algoritmo):
+        for k in ["res","df_clusters","df_etiquetado","df_final","df_ruta","solve_t"]:
+            st.session_state[k] = None
+        st.session_state["leg_0"] = 0
+        st.session_state["fecha_actual"] = fecha
+        st.session_state["algoritmo_actual"] = algoritmo
 
-def datos_ruta():
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        st.image("https://github.com/Melisa2303/LAVANDERIAS-V2/raw/main/data/LOGO.PNG", width=100)
-    with col2:
-        st.markdown("<h1 style='text-align: left; color: black;'>Lavanderías Americanas</h1>", unsafe_allow_html=True)
-    st.title("📋 Ruta del Día")
+    if st.session_state["res"] is None:
+        pedidos = cargar_pedidos(fecha, "Todos")
+        if not pedidos:
+            st.info("No hay pedidos para esa fecha.")
+            return
 
-    fecha_seleccionada = st.date_input("Seleccionar Fecha", value=datetime.now().date())
-    datos = cargar_ruta(fecha_seleccionada)
+        df_original = pd.DataFrame(pedidos)
+        df_clusters, df_et = agrupar_puntos_aglomerativo(df_original, eps_metros=5)
+        st.session_state["df_clusters"] = df_clusters.copy()
+        st.session_state["df_etiquetado"] = df_et.copy()
 
-    if datos:
-        tabla_data = []
-        for item in datos:
-            nombre_mostrar = item["nombre_cliente"] if item["tipo_solicitud"] == "Cliente Delivery" else item["sucursal"]
-            tabla_data.append({
-                "Operación": item["operacion"],
-                "Cliente/Sucursal": nombre_mostrar if nombre_mostrar else "N/A",
-                "Dirección": item["direccion"],
-                "Teléfono": item["telefono"],
-                "Hora": item["hora"] if item["hora"] else "Sin hora",
-            })
+        df_final = df_clusters.copy()
+        st.session_state["df_final"] = df_final.copy()
 
-        df_tabla = pd.DataFrame(tabla_data)
-        st.dataframe(df_tabla, height=600, use_container_width=True, hide_index=True)
+        data = _crear_data_model(df_final, vehiculos=1)
 
-        deliveries = [item for item in datos if item["tipo_solicitud"] == "Cliente Delivery"]
-        if deliveries:
-            st.markdown("---")
-            st.subheader("🔄 Gestión de Deliveries")
+        alg_fn = ALG_MAP[algoritmo]
+        t0 = tiempo.time()
+        res = alg_fn(data, tiempo_max_seg=120)
+        st.session_state["solve_t"] = tiempo.time() - t0
 
-            opciones = {f"{item['operacion']} - {item['nombre_cliente']}": item for item in deliveries}
-            selected = st.selectbox("Seleccionar operación:", options=opciones.keys())
-            delivery_data = opciones[selected]
+        if not res:
+            st.error("😕 Sin solución factible.")
+            return
 
-            st.markdown(f"### Hora de {delivery_data['operacion']}")
-            hora_col1, hora_col2 = st.columns([4, 1])
-            with hora_col1:
-                horas_sugeridas = [f"{h:02d}:{m:02d}" for h in range(7, 19) for m in (0, 30)]
-                hora_actual = delivery_data.get("hora")
+        st.session_state["res"] = res
 
-                if hora_actual and hora_actual[:5] not in horas_sugeridas:
-                    horas_sugeridas.append(hora_actual[:5])
-                    horas_sugeridas.sort()
+        ruta = res["routes"][0]["route"]
+        arr  = res["routes"][0]["arrival_sec"]
+        df_r = df_final.loc[ruta, ["nombre_cliente","direccion","time_start","time_end"]].copy()
+        df_r["ventana_con_margen"] = df_r.apply(_ventana_extendida, axis=1)
+        df_r["ETA"]   = [ _segundos_a_hora(t) for t in arr ]
+        df_r["orden"] = range(len(ruta))
+        st.session_state["df_ruta"] = df_r.copy()
 
-                opciones_hora = ["-- Sin asignar --"] + horas_sugeridas
-                if hora_actual and hora_actual[:5] in horas_sugeridas:
-                    index_hora = opciones_hora.index(hora_actual[:5])
-                else:
-                    index_hora = 0
-
-                nueva_hora = st.selectbox(
-                    "Seleccionar o escribir hora (HH:MM):",
-                    options=opciones_hora,
-                    index=index_hora,
-                    key=f"hora_combobox_{delivery_data['id']}"
-                )
-
-            with hora_col2:
-                st.write("")
-                st.write("")
-                if st.button("💾 Guardar", key=f"guardar_btn_{delivery_data['id']}"):
-                    try:
-                        campo_hora = "hora_recojo" if delivery_data["operacion"] == "Recojo" else "hora_entrega"
-                        if nueva_hora == "-- Sin asignar --":
-                            db.collection('recogidas').document(delivery_data["id"]).update({
-                                campo_hora: None
-                            })
-                            st.success("Hora eliminada")
-                        else:
-                            if len(nueva_hora.split(":")) != 2:
-                                raise ValueError
-                            hora, minutos = map(int, nueva_hora.split(":"))
-                            if not (0 <= hora < 24 and 0 <= minutos < 60):
-                                raise ValueError
-
-                            db.collection('recogidas').document(delivery_data["id"]).update({
-                                campo_hora: f"{hora:02d}:{minutos:02d}:00"
-                            })
-                            st.success("Hora actualizada")
-
-                        st.cache_data.clear()
-                        time.sleep(1)
-                        st.rerun()
-
-                    except ValueError:
-                        st.error("Formato inválido. Use HH:MM")
-                    except Exception as e:
-                        st.error(f"Error: {e}")
+    df_r = st.session_state["df_ruta"]
+    filas = []
+    vent_coch = _ventana_extendida(pd.Series({
+        "time_start": COCHERA["hora"],
+        "time_end":   COCHERA["hora"]
+    }))
+    filas.append({
+        "orden": 0,
+        "nombre_cliente": COCHERA["direccion"],
+        "direccion": COCHERA["direccion"],
+        "ventana_con_margen": vent_coch,
+        "ETA": COCHERA["hora"]
+    })
+    for _, row in df_r.sort_values("orden").iterrows():
+        filas.append({
+            "orden": int(row["orden"]) + 1,
+            "nombre_cliente": row["nombre_cliente"],
+            "direccion": row["direccion"],
+            "ventana_con_margen": row["ventana_con_margen"],
+            "ETA": row["ETA"]
+        })
+    df_display = pd.DataFrame(filas).sort_values("orden").reset_index(drop=True)
+    st.subheader("📋 Orden de visita optimizada")
+    st.dataframe(df_display, use_container_width=True)
