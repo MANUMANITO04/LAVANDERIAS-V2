@@ -69,14 +69,13 @@ def cargar_ruta(fecha):
         st.error(f"Error al cargar datos: {e}")
         return []
 
-def datos_ruta()
+def datos_ruta():
     col1, col2 = st.columns([1, 3])
     with col1:
         st.image("https://github.com/Melisa2303/LAVANDERIAS-V2/raw/main/data/LOGO.PNG", width=100)
     with col2:
         st.markdown("<h1 style='text-align: left; color: black;'>Lavanderías Americanas</h1>", unsafe_allow_html=True)
     st.title("📋 Ruta del Día")
-
 
     # Filtro: solo fecha
     fecha_seleccionada = st.date_input("Seleccionar Fecha", value=datetime.now().date())
