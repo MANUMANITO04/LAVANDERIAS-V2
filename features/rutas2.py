@@ -19,9 +19,8 @@ from core.geo_utils import obtener_sugerencias_direccion, obtener_direccion_desd
 
 gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
 
-
-#@st.cache_data(ttl=300)
-"""def cargar_ruta(fecha):
+@st.cache_data(ttl=300)
+def cargar_ruta(fecha):
     """
     #Carga las rutas de recogida y entrega desde la base de datos para una fecha específica.
     #Retorna una lista de dict con los campos necesarios.
@@ -67,57 +66,8 @@ gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
         return datos
     except Exception as e:
         st.error(f"Error al cargar datos: {e}")
-        return []"""
-
-
-@st.cache_data(ttl=300)
-def cargar_ruta(fecha):
-    try:
-        fecha_str = fecha.strftime("%Y-%m-%d")
-        query = db.collection('recogidas')
-        docs = list(query.stream())
-
-        datos = []
-        for doc in docs:
-            data = doc.to_dict()
-            doc_id = doc.id
-
-            # Marcar si ya se agregó por recojo o entrega
-            ya_agregado = False
-
-            if data.get("fecha_recojo") == fecha_str:
-                datos.append({
-                    "id": doc_id,
-                    "operacion": "Recojo",
-                    "nombre_cliente": data.get("nombre_cliente"),
-                    "sucursal": data.get("sucursal"),
-                    "direccion": data.get("direccion_recojo", "N/A"),
-                    "telefono": data.get("telefono", "N/A"),
-                    "hora": data.get("hora_recojo", ""),
-                    "tipo_solicitud": data.get("tipo_solicitud"),
-                    "coordenadas": data.get("coordenadas_recojo", {"lat": -16.409047, "lon": -71.537451}),
-                    "fecha": data.get("fecha_recojo"),
-                })
-                ya_agregado = True
-
-            if data.get("fecha_entrega") == fecha_str and data.get("fecha_entrega") != data.get("fecha_recojo"):
-                datos.append({
-                    "id": doc_id,
-                    "operacion": "Entrega",
-                    "nombre_cliente": data.get("nombre_cliente"),
-                    "sucursal": data.get("sucursal"),
-                    "direccion": data.get("direccion_entrega", "N/A"),
-                    "telefono": data.get("telefono", "N/A"),
-                    "hora": data.get("hora_entrega", ""),
-                    "tipo_solicitud": data.get("tipo_solicitud"),
-                    "coordenadas": data.get("coordenadas_entrega", {"lat": -16.409047, "lon": -71.537451}),
-                    "fecha": data.get("fecha_entrega"),
-                })
-
-        return datos
-    except Exception as e:
-        st.error(f"Error al cargar datos: {e}")
         return []
+
 
 
 def datos_ruta():
