@@ -1,4 +1,4 @@
-# Algoritmo 4: OR + PCA + LNS 
+#Algoritmo 4: OR + PCA + LNS
 import os
 import math
 import time as tiempo
@@ -18,55 +18,50 @@ from core.constants import GOOGLE_MAPS_API_KEY
 
 gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
 
+
 # -------------------- CONSTANTES VRP --------------------
-SERVICE_TIME = 10 * 60        # 10 minutos de servicio 
-MAX_ELEMENTS = 100            # límite de celdas por petición DM API
-SHIFT_START_SEC = 9 * 3600    # 09:00 
-SHIFT_END_SEC = 16*3600 +30*60 # 16:30 
-MARGEN = 20 * 60              # 15 minutos de margen 
+SERVICE_TIME    = 30        # 10 minutos de servicio
+MAX_ELEMENTS    = 100            # límite de celdas por petición DM API
+SHIFT_START_SEC =  9 * 3600      # 09:00
+SHIFT_END_SEC   = 16*3600 +30*60 # 16:30
 
 # ===================== AUXILIARES VRP =====================
 db = firestore.client()
 
 def _hora_a_segundos(hhmm):
-    if hhmm is None or pd.isna(hhmm) or hhmm == "":
+    if hhmm is None or pd.isna(hhmm):
         return None
-    try:
-        parts = str(hhmm).split(":")
-        h = int(parts[0])
-        m = int(parts[1])
-        return h*3600 + m*60
-    except:
-        return None
-
-def _haversine_dist_dur(coords, vel_kmh=30.0):
+    h, m = map(int, str(hhmm).split(":"))
+    return h*3600 + m*60
+#Distancia euclidiana - Drones - Emergencia - Botar sí o sí una tabla ordenada considerando distancias, 
+# no tiempo real, sino estimación
+def _haversine_dist_dur(coords, vel_kmh=40.0):
     R = 6371e3
     n = len(coords)
     dist = [[0]*n for _ in range(n)]
-    dur = [[0]*n for _ in range(n)]
+    dur  = [[0]*n for _ in range(n)]
     v_ms = vel_kmh * 1000 / 3600
     for i in range(n):
         for j in range(n):
-            if i == j:
-                continue
-            lat1, lon1 = map(math.radians, coords[i])
-            lat2, lon2 = map(math.radians, coords[j])
-            dlat = lat2 - lat1
-            dlon = lon2 - lon1
-            a = math.sin(dlat/2)**2 + math.cos(lat1)*math.cos(lat2)*math.sin(dlon/2)**2
-            d = 2 * R * math.asin(math.sqrt(a))
+            if i==j: continue
+            la1,lo1 = map(math.radians, coords[i])
+            la2,lo2 = map(math.radians, coords[j])
+            dlat = la2-la1; dlon=lo2-lo1
+            a = math.sin(dlat/2)**2 + math.cos(la1)*math.cos(la2)*math.sin(dlon/2)**2
+            d = 2*R*math.asin(math.sqrt(a))
             dist[i][j] = int(d)
-            dur[i][j] = int(d / v_ms)
+            dur [i][j] = int(d/v_ms)
     return dist, dur
 
+#Tomar los puntos de la API - Matriz para el algoritmo las reciba 
 @st.cache_data(ttl="1h", show_spinner=False)
 def _distancia_duracion_matrix(coords):
     if not GOOGLE_MAPS_API_KEY:
         return _haversine_dist_dur(coords)
     n = len(coords)
     dist = [[0]*n for _ in range(n)]
-    dur = [[0]*n for _ in range(n)]
-    batch = max(1, min(n, MAX_ELEMENTS // n))
+    dur  = [[0]*n for _ in range(n)]
+    batch = max(1, min(n, MAX_ELEMENTS//n))
     for i0 in range(0, n, batch):
         resp = gmaps.distance_matrix(
             origins=coords[i0:i0+batch],
@@ -74,44 +69,38 @@ def _distancia_duracion_matrix(coords):
             mode="driving",
             units="metric",
             departure_time=datetime.now(),
-            traffic_model="best_guess"
+            traffic_model="best_guess" #pessimistic / optimistic
         )
-        for i, row in enumerate(resp["rows"]):
-            for j, el in enumerate(row["elements"]):
+        for i,row in enumerate(resp["rows"]):
+            for j,el in enumerate(row["elements"]):
                 dist[i0+i][j] = el.get("distance",{}).get("value",1)
-                dur[i0+i][j] = el.get("duration_in_traffic",{}).get(
-                    "value",
-                    el.get("duration",{}).get("value",1)
-                )
+                dur [i0+i][j] = el.get("duration_in_traffic",{}).get("value",
+                                      el.get("duration",{}).get("value",1))
     return dist, dur
 
+#Datos para la visualización del usuario + Consideraciones del algoritmo
 def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
     coords = list(zip(df["lat"], df["lon"]))
     dist_m, dur_s = _distancia_duracion_matrix(coords)
-    
-    time_windows = []
-    demandas = []
+    time_windows, demandas = [], []
     for _, row in df.iterrows():
         ini = _hora_a_segundos(row.get("time_start"))
         fin = _hora_a_segundos(row.get("time_end"))
         if ini is None or fin is None:
             ini, fin = SHIFT_START_SEC, SHIFT_END_SEC
-        else:
-            # Aplicar márgenes como en algoritmo1
-            ini = max(0, ini - MARGEN)
-            fin = min(24*3600, fin + MARGEN)
         time_windows.append((ini, fin))
         demandas.append(row.get("demand", 1))
-    
     return {
-        "distance_matrix": dist_m,
-        "duration_matrix": dur_s,
-        "time_windows": time_windows,
-        "demands": demandas,
-        "num_vehicles": vehiculos,
+        "distance_matrix":    dist_m,
+        "duration_matrix":    dur_s,
+        "time_windows":       time_windows,
+        "demands":            demandas,
+        "num_vehicles":       vehiculos,
         "vehicle_capacities": [capacidad_veh or 10**9] * vehiculos,
-        "depot": 0,
+        "depot":              0,
     }
+
+
 #Algoritmos diversos
 #OR-Tool + LNS + PCA
 def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
@@ -140,7 +129,7 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
     # Dimensión de tiempo con inicio fijado a las 08:00
     routing.AddDimension(
         transit_cb_index,
-        2000,                # tiempo de espera permitido (slack)
+        1800,                # tiempo de espera permitido (slack)
         24 * 3600,           # límite total de ruta
         False,                # <- fijar el tiempo inicial a 0 (necesario para controlarlo)
         "Time"
@@ -206,7 +195,7 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
         "routes": rutas,
         "distance_total_m": dist_total
     }
-
+# ============= CARGAR PEDIDOS DESDE FIRESTORE =============
 
 @st.cache_data(ttl=300)
 def cargar_pedidos(fecha, tipo):
@@ -235,3 +224,5 @@ def cargar_pedidos(fecha, tipo):
             "demand":1
         })
     return out
+
+
