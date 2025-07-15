@@ -182,7 +182,7 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
             route.append(node)
             llegada.append(solution.Min(time_dimension.CumulVar(idx)))
             next_idx = solution.Value(routing.NextVar(idx))
-            dist_total += data["distance_matrix"][node][manager.IndexToNode(next_idx)]
+            dist_total += routing.GetArcCostForVehicle(idx, next_idx, v)
             idx = next_idx
 
         rutas.append({
