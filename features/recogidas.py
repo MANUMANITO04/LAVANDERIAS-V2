@@ -62,7 +62,7 @@ def solicitar_recogida():
 
         if st.button("💾 Solicitar Recogida"):
             #fecha_entrega = calcular_fecha_entrega(fecha_recojo)
-            fecha_entrega = None
+            fecha_entrega = calcular_fecha_entrega(fecha_recojo)
             solicitud = {
                 "tipo_solicitud": tipo_solicitud,
                 "sucursal": nombre_sucursal,
