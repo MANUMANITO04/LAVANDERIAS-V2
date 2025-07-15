@@ -117,10 +117,7 @@ def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
         "depot": 0,
     }
 
-def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120, reintento=False):
-    """
-    Versión completamente revisada basada en algoritmo1 pero manteniendo LNS
-    """
+def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
     manager = pywrapcp.RoutingIndexManager(
         len(data["distance_matrix"]),
         data["num_vehicles"],
@@ -128,7 +125,7 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120, reintento=False):
     )
     routing = pywrapcp.RoutingModel(manager)
 
-    # Callback de tiempo idéntico al de algoritmo1
+    # Callback de tiempo del original
     def time_cb(from_index, to_index):
         i = manager.IndexToNode(from_index)
         j = manager.IndexToNode(to_index)
@@ -139,35 +136,36 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120, reintento=False):
     transit_cb_idx = routing.RegisterTransitCallback(time_cb)
     routing.SetArcCostEvaluatorOfAllVehicles(transit_cb_idx)
 
+    # Dimensión de tiempo como en el original pero con ajustes
     routing.AddDimension(
         transit_cb_idx,
-        1800,           # slack máximo
-        24 * 3600,           # límite total de ruta
-        False,               # no fijar tiempo inicial
+        1800,                # slack máximo (30 minutos) - como original
+        24 * 3600,          # límite total de ruta
+        False,              # no fijar tiempo inicial
         "Time"
     )
     time_dim = routing.GetDimensionOrDie("Time")
-    time_dim.SetGlobalSpanCostCoefficient(1000)  # Importante para optimización de tiempo
+    
+    # Configuración de ventanas como en original
+    for node_index, (ini, fin) in enumerate(data["time_windows"]):
+        index = manager.NodeToIndex(node_index)
+        time_dim.CumulVar(index).SetRange(ini, fin)
+    
+    # Fijar salida de depósito como en original (para todos los vehículos)
+    for vehicle_id in range(data["num_vehicles"]):
+        start_index = routing.Start(vehicle_id)
+        time_dim.CumulVar(start_index).SetRange(SHIFT_START_SEC, SHIFT_START_SEC)
 
-    # Aplicar ventanas de tiempo como en algoritmo1
-    for node, (ini, fin) in enumerate(data["time_windows"]):
-        idx = manager.NodeToIndex(node)
-        time_dim.CumulVar(idx).SetRange(ini, fin)
-
-    # Fijar tiempo de salida del depósito
-    depot_idx = manager.NodeToIndex(data["depot"])
-    time_dim.CumulVar(depot_idx).SetRange(SHIFT_START_SEC, SHIFT_START_SEC)
-
-    # Configuración de capacidad
+    # Capacidad (igual en ambos)
     if any(data["demands"]):
-        def demand_cb(from_index):
-            return data["demands"][manager.IndexToNode(from_index)]
+        def demand_cb(index):
+            return data["demands"][manager.IndexToNode(index)]
         demand_cb_idx = routing.RegisterUnaryTransitCallback(demand_cb)
         routing.AddDimensionWithVehicleCapacity(
             demand_cb_idx, 0, data["vehicle_capacities"], True, "Capacity"
         )
 
-    # Parámetros de búsqueda
+    # Parámetros de búsqueda como en original
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
     search_parameters.first_solution_strategy = (
         routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
@@ -180,52 +178,21 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120, reintento=False):
     solution = routing.SolveWithParameters(search_parameters)
 
     if not solution:
-        if not reintento:
-            st.warning("❌ No se encontró solución inicial. Analizando posibles problemas...")
-            
-            ventanas_cortas = []
-            for node, (ini, fin) in enumerate(data["time_windows"]):
-                dur = fin - ini
-                if dur < 45 * 60 and node != data["depot"]:
-                    ventanas_cortas.append(node)
-            
-            if ventanas_cortas:
-                st.warning("🔄 Intentando nuevamente con márgenes ampliados...")
-                nueva_data = data.copy()
-                nuevas_ventanas = []
-                for i, (ini, fin) in enumerate(data["time_windows"]):
-                    if i in ventanas_cortas:
-                        centro = (ini + fin) // 2
-                        nuevo_ini = max(0, centro - 3600)
-                        nuevo_fin = min(86400, centro + 3600)
-                        nuevas_ventanas.append((nuevo_ini, nuevo_fin))
-                    else:
-                        nuevas_ventanas.append((ini, fin))
-                
-                nueva_data["time_windows"] = nuevas_ventanas
-                return optimizar_ruta_algoritmo4(nueva_data, tiempo_max_seg, reintento=True)
-        
-        st.error("😕 No se encontró solución factible.")
         return None
 
-    # Procesamiento de solución
+    # Procesamiento de solución como en original
     rutas, dist_total = [], 0
     for v in range(data["num_vehicles"]):
         idx = routing.Start(v)
         route, llegada = [], []
-        route_distance = 0
         while not routing.IsEnd(idx):
             node = manager.IndexToNode(idx)
             route.append(node)
             llegada.append(solution.Min(time_dim.CumulVar(idx)))
             next_idx = solution.Value(routing.NextVar(idx))
-            
-            # Cálculo de distancia usando la matriz real
-            route_distance += data["distance_matrix"][node][manager.IndexToNode(next_idx)]
-            
+            dist_total += data["distance_matrix"][node][manager.IndexToNode(next_idx)]
             idx = next_idx
 
-        dist_total += route_distance
         rutas.append({
             "vehicle": v,
             "route": route,
@@ -234,7 +201,7 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120, reintento=False):
 
     return {
         "routes": rutas,
-        "distance_total_m": dist_total  # Distancia calculada correctamente
+        "distance_total_m": dist_total
     }
 
 @st.cache_data(ttl=300)
