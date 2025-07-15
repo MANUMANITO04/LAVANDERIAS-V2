@@ -40,8 +40,7 @@ def solicitar_recogida():
     def calcular_fecha_entrega(fecha_recojo):
         dia_semana = fecha_recojo.weekday()
         if dia_semana == 5: return fecha_recojo + timedelta(days=4)
-        elif dia_semana == 3: return fecha_recojo + timedelta(days=4)
-        return fecha_recojo + timedelta(days=3)
+        return fecha_recojo + timedelta(days=0)
 
     tipo_solicitud = st.radio("Tipo de Solicitud", ["Sucursal", "Cliente Delivery"], horizontal=True)
 
