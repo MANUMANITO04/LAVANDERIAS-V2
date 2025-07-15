@@ -112,63 +112,71 @@ def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
         "vehicle_capacities": [capacidad_veh or 10**9] * vehiculos,
         "depot": 0,
     }
-
+#Algoritmos diversos
+#OR-Tool + LNS + PCA
 def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
+    """
+    Adaptación del Algoritmo 1 para usar Large Neighborhood Search (LNS)
+    en lugar de Guided Local Search (GLS)
+    """
     manager = pywrapcp.RoutingIndexManager(
-        len(data["distance_matrix"]),
+        len(data["duration_matrix"]),
         data["num_vehicles"],
         data["depot"]
     )
     routing = pywrapcp.RoutingModel(manager)
 
-    # Callback de tiempo del original
-    def time_cb(from_index, to_index):
-        i = manager.IndexToNode(from_index)
-        j = manager.IndexToNode(to_index)
+    # Callback de tiempo (duración + tiempo de servicio)
+    def time_cb(from_idx, to_idx):
+        i = manager.IndexToNode(from_idx)
+        j = manager.IndexToNode(to_idx)
         travel = data["duration_matrix"][i][j]
         service = SERVICE_TIME if i != data["depot"] else 0
         return travel + service
 
-    transit_cb_idx = routing.RegisterTransitCallback(time_cb)
-    routing.SetArcCostEvaluatorOfAllVehicles(transit_cb_idx)
+    transit_cb_index = routing.RegisterTransitCallback(time_cb)
+    routing.SetArcCostEvaluatorOfAllVehicles(transit_cb_index)
 
-    # Dimensión de tiempo como en el original pero con ajustes
+    # Dimensión de tiempo con inicio fijado a las 08:00
     routing.AddDimension(
-        transit_cb_idx,
-        1800,                # slack máximo (30 minutos) - como original
-        24 * 3600,          # límite total de ruta
-        False,              # no fijar tiempo inicial
+        transit_cb_index,
+        1800,                # tiempo de espera permitido (slack)
+        24 * 3600,           # límite total de ruta
+        False,                # <- fijar el tiempo inicial a 0 (necesario para controlarlo)
         "Time"
     )
-    time_dim = routing.GetDimensionOrDie("Time")
-    
-    # Configuración de ventanas como en original
-    for node_index, (ini, fin) in enumerate(data["time_windows"]):
-        index = manager.NodeToIndex(node_index)
-        time_dim.CumulVar(index).SetRange(ini, fin)
-    
-    # Fijar salida de depósito como en original (para todos los vehículos)
+    time_dimension = routing.GetDimensionOrDie("Time")
+
+    # Fijar salida del depósito a las 08:00
     for vehicle_id in range(data["num_vehicles"]):
         start_index = routing.Start(vehicle_id)
-        time_dim.CumulVar(start_index).SetRange(SHIFT_START_SEC, SHIFT_START_SEC)
+        time_dimension.CumulVar(start_index).SetRange(SHIFT_START_SEC, SHIFT_START_SEC)
 
-    # Capacidad (igual en ambos)
+    # Aplicar ventanas de tiempo a cada nodo
+    for node_index, (ini, fin) in enumerate(data["time_windows"]):
+        index = manager.NodeToIndex(node_index)
+        time_dimension.CumulVar(index).SetRange(ini, fin)
+
+    # Capacidad (si hay demandas)
     if any(data["demands"]):
         def demand_cb(index):
             return data["demands"][manager.IndexToNode(index)]
-        demand_cb_idx = routing.RegisterUnaryTransitCallback(demand_cb)
+
+        demand_cb_index = routing.RegisterUnaryTransitCallback(demand_cb)
         routing.AddDimensionWithVehicleCapacity(
-            demand_cb_idx, 0, data["vehicle_capacities"], True, "Capacity"
+            demand_cb_index,
+            0,  # sin capacidad extra
+            data["vehicle_capacities"],
+            True,
+            "Capacity"
         )
 
-    # Parámetros de búsqueda como en original
+    # Parámetros de búsqueda con LNS
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
-    search_parameters.first_solution_strategy = (
-        routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
-    )
-    search_parameters.local_search_metaheuristic = (
-        routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
-    )
+    search_parameters.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+
+    # Metaheurística para explorar soluciones vecinas
+    search_parameters.local_search_metaheuristic = routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
     search_parameters.time_limit.seconds = tiempo_max_seg
 
     solution = routing.SolveWithParameters(search_parameters)
@@ -176,7 +184,6 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
     if not solution:
         return None
 
-    # Procesamiento de solución como en original
     rutas, dist_total = [], 0
     for v in range(data["num_vehicles"]):
         idx = routing.Start(v)
@@ -184,9 +191,9 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
         while not routing.IsEnd(idx):
             node = manager.IndexToNode(idx)
             route.append(node)
-            llegada.append(solution.Min(time_dim.CumulVar(idx)))
+            llegada.append(solution.Min(time_dimension.CumulVar(idx)))
             next_idx = solution.Value(routing.NextVar(idx))
-            dist_total += data["distance_matrix"][node][manager.IndexToNode(next_idx)]
+            dist_total += routing.GetArcCostForVehicle(idx, next_idx, v)
             idx = next_idx
 
         rutas.append({
@@ -199,6 +206,7 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
         "routes": rutas,
         "distance_total_m": dist_total
     }
+
 
 @st.cache_data(ttl=300)
 def cargar_pedidos(fecha, tipo):
