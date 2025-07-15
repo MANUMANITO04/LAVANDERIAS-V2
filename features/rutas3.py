@@ -246,7 +246,7 @@ def ver_ruta_optimizada():
         ).add_to(m)
         folium.Marker(
             (df_f.loc[ruta[0],"lat"],df_f.loc[ruta[0],"lon"]),
-            popup="Planta Lavandería", tooltip="AV. Dolores",
+            popup="Planta Lavandería", tooltip="CERRO SALAVERRY",
             icon=folium.Icon(color="green",icon="home",prefix="fa")
         ).add_to(m)
         for idx in ruta[1:]:
