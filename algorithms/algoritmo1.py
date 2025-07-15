@@ -363,7 +363,8 @@ def agrupar_puntos_aglomerativo(df, eps_metros=5):
         agrupados.append({
             "id":             f"cluster_{clus}",
             "operacion":      "Agrupado",
-            "nombre_cliente": f"Grupo {clus}: {nombre_desc}",
+            #"nombre_cliente": f"Grupo {clus}: {nombre_desc}",
+            "nombre_cliente": nombre_desc,
             "direccion":      direccion_desc,
             "lat":            centro_lat,
             "lon":            centro_lon,
