@@ -28,6 +28,7 @@ MAX_ELEMENTS = 100
 SHIFT_START_SEC = 9 * 3600
 SHIFT_END_SEC = 16 * 3600 + 30 * 60
 MARGEN = 15 * 60  # 15 minutos
+SERVICE_TIME = 10 * 60        # ya no se usa directamente (ahora es por punto)
 
 # ===================== FUNCIONES AUXILIARES =====================
 
