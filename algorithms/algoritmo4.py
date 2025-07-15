@@ -29,7 +29,6 @@ MARGEN = 15 * 60              # 15 minutos de margen
 db = firestore.client()
 
 def _hora_a_segundos(hhmm):
-    """Versión idéntica a la de algoritmo1 que funciona correctamente"""
     if hhmm is None or pd.isna(hhmm) or hhmm == "":
         return None
     try:
@@ -40,8 +39,7 @@ def _hora_a_segundos(hhmm):
     except:
         return None
 
-def _haversine_dist_dur(coords, vel_kmh=40.0):
-    """Versión idéntica a la de algoritmo1"""
+def _haversine_dist_dur(coords, vel_kmh=30.0):
     R = 6371e3
     n = len(coords)
     dist = [[0]*n for _ in range(n)]
@@ -63,7 +61,6 @@ def _haversine_dist_dur(coords, vel_kmh=40.0):
 
 @st.cache_data(ttl="1h", show_spinner=False)
 def _distancia_duracion_matrix(coords):
-    """Versión idéntica a la de algoritmo1"""
     if not GOOGLE_MAPS_API_KEY:
         return _haversine_dist_dur(coords)
     n = len(coords)
@@ -89,7 +86,6 @@ def _distancia_duracion_matrix(coords):
     return dist, dur
 
 def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
-    """Versión mejorada basada en algoritmo1 con márgenes"""
     coords = list(zip(df["lat"], df["lon"]))
     dist_m, dur_s = _distancia_duracion_matrix(coords)
     
@@ -206,7 +202,6 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
 
 @st.cache_data(ttl=300)
 def cargar_pedidos(fecha, tipo):
-    """Función idéntica a la de algoritmo1"""
     col = db.collection('recogidas')
     docs = []
     docs += col.where("fecha_recojo", "==", fecha.strftime("%Y-%m-%d")).stream()
