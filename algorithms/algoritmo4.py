@@ -20,7 +20,7 @@ gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
 
 
 # -------------------- CONSTANTES VRP --------------------
-SERVICE_TIME    = 30        # 10 minutos de servicio
+SERVICE_TIME    = 10        # 10 minutos de servicio
 MAX_ELEMENTS    = 100            # límite de celdas por petición DM API
 SHIFT_START_SEC =  9 * 3600      # 09:00
 SHIFT_END_SEC   = 16*3600 +30*60 # 16:30
@@ -116,12 +116,14 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
     routing = pywrapcp.RoutingModel(manager)
 
     # Callback de tiempo (duración + tiempo de servicio)
-    def time_cb(from_idx, to_idx):
-        i = manager.IndexToNode(from_idx)
-        j = manager.IndexToNode(to_idx)
-        travel = data["duration_matrix"][i][j]
-        service = SERVICE_TIME if i != data["depot"] else 0
-        return travel + service
+def time_cb(from_idx, to_idx):
+    i = manager.IndexToNode(from_idx)
+    j = manager.IndexToNode(to_idx)
+    travel = data["duration_matrix"][i][j]
+    # Servicio se aplica al nodo de llegada (excepto depósito)
+    service = SERVICE_TIME if j != data["depot"] else 0
+    return travel + service
+
 
     transit_cb_index = routing.RegisterTransitCallback(time_cb)
     routing.SetArcCostEvaluatorOfAllVehicles(transit_cb_index)
@@ -129,7 +131,7 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
     # Dimensión de tiempo con inicio fijado a las 08:00
     routing.AddDimension(
         transit_cb_index,
-        1800,                # tiempo de espera permitido (slack)
+        SERVICE_TIME,                # tiempo de espera permitido (slack)
         24 * 3600,           # límite total de ruta
         False,                # <- fijar el tiempo inicial a 0 (necesario para controlarlo)
         "Time"
