@@ -88,29 +88,22 @@ def _distancia_duracion_matrix(coords):
 def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
     coords = list(zip(df["lat"], df["lon"]))
     dist_m, dur_s = _distancia_duracion_matrix(coords)
-    
-    time_windows = []
-    demandas = []
+    time_windows, demandas = [], []
     for _, row in df.iterrows():
         ini = _hora_a_segundos(row.get("time_start"))
         fin = _hora_a_segundos(row.get("time_end"))
         if ini is None or fin is None:
             ini, fin = SHIFT_START_SEC, SHIFT_END_SEC
-        else:
-            # Aplicar márgenes como en algoritmo1
-            ini = max(0, ini - MARGEN)
-            fin = min(24*3600, fin + MARGEN)
         time_windows.append((ini, fin))
         demandas.append(row.get("demand", 1))
-    
     return {
-        "distance_matrix": dist_m,
-        "duration_matrix": dur_s,
-        "time_windows": time_windows,
-        "demands": demandas,
-        "num_vehicles": vehiculos,
+        "distance_matrix":    dist_m,
+        "duration_matrix":    dur_s,
+        "time_windows":       time_windows,
+        "demands":            demandas,
+        "num_vehicles":       vehiculos,
         "vehicle_capacities": [capacidad_veh or 10**9] * vehiculos,
-        "depot": 0,
+        "depot":              0,
     }
     
 def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
