@@ -277,7 +277,7 @@ def datos_ruta():
     uploaded_file = st.file_uploader("Selecciona el archivo CSV", type=["csv"], key="cargar_csv")
 
     if uploaded_file:
-        df_csv = pd.read_csv(uploaded_file)
+        df_csv = pd.read_csv(uploaded_file, dtype={"telefono": str})
         st.dataframe(df_csv)
 
         if st.button("🚀 Subir a Firestore", key="boton_subir_csv"):
