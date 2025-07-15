@@ -105,12 +105,14 @@ def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
         time_windows.append((ini, fin))
         demandas.append(row.get("demand", 1))
 
-        # Tiempo de servicio diferenciado por tipo
+        # ← NUEVO: tiempo de servicio personalizado
         tipo = row.get("tipo", "").strip()
         if tipo == "Sucursal":
-            service_times.append(5 * 60)  # 5 minutos para sucursales
+            service_times.append(10 * 60)  # 5 minutos
+        elif tipo == "Planta":
+            service_times.append(30 * 60)  # 30 minutos
         else:
-            service_times.append(10 * 60)  # 10 minutos para clientes delivery u otros
+            service_times.append(10 * 60)  # Cliente Delivery o indefinido
 
     return {
         "distance_matrix": dist_m,
@@ -120,7 +122,7 @@ def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
         "num_vehicles": vehiculos,
         "vehicle_capacities": [capacidad_veh or 10**9] * vehiculos,
         "depot": 0,
-        "service_times": service_times
+        "service_times": service_times  
     }
 
 def optimizar_ruta_algoritmo22(data, tiempo_max_seg=60, reintento=False):
