@@ -23,7 +23,7 @@ SERVICE_TIME = 10 * 60        # 10 minutos de servicio
 MAX_ELEMENTS = 100            # límite de celdas por petición DM API
 SHIFT_START_SEC = 9 * 3600    # 09:00 
 SHIFT_END_SEC = 16*3600 +30*60 # 16:30 
-MARGEN = 15 * 60              # 15 minutos de margen 
+MARGEN = 30 * 60              # 15 minutos de margen 
 
 # ===================== AUXILIARES VRP =====================
 db = firestore.client()
