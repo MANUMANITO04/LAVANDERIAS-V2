@@ -35,7 +35,7 @@ def _hora_a_segundos(hhmm):
     return h*3600 + m*60
 #Distancia euclidiana - Drones - Emergencia - Botar sí o sí una tabla ordenada considerando distancias, 
 # no tiempo real, sino estimación
-def _haversine_dist_dur(coords, vel_kmh=40.0):
+def _haversine_dist_dur(coords, vel_kmh=30.0):
     R = 6371e3
     n = len(coords)
     dist = [[0]*n for _ in range(n)]
@@ -129,7 +129,7 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
     # Dimensión de tiempo con inicio fijado a las 08:00
     routing.AddDimension(
         transit_cb_index,
-        3600,                # tiempo de espera permitido (slack)
+        3000,                # tiempo de espera permitido (slack)
         24 * 3600,           # límite total de ruta
         False,                # <- fijar el tiempo inicial a 0 (necesario para controlarlo)
         "Time"
