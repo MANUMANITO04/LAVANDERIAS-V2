@@ -1,4 +1,4 @@
-# Algoritmo 4: OR + PCA + LNS 
+#Algoritmo 4: OR + PCA + LNS
 import os
 import math
 import time as tiempo
@@ -18,55 +18,50 @@ from core.constants import GOOGLE_MAPS_API_KEY
 
 gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
 
+
 # -------------------- CONSTANTES VRP --------------------
-SERVICE_TIME = 15 * 60        # 10 minutos de servicio 
-MAX_ELEMENTS = 100            # límite de celdas por petición DM API
-SHIFT_START_SEC = 9 * 3600    # 09:00 
-SHIFT_END_SEC = 16*3600 +30*60 # 16:30 
-MARGEN = 0 * 60              # 15 minutos de margen 
+SERVICE_TIME    = 30        # 10 minutos de servicio
+MAX_ELEMENTS    = 100            # límite de celdas por petición DM API
+SHIFT_START_SEC =  9 * 3600      # 09:00
+SHIFT_END_SEC   = 16*3600 +30*60 # 16:30
 
 # ===================== AUXILIARES VRP =====================
 db = firestore.client()
 
 def _hora_a_segundos(hhmm):
-    if hhmm is None or pd.isna(hhmm) or hhmm == "":
+    if hhmm is None or pd.isna(hhmm):
         return None
-    try:
-        parts = str(hhmm).split(":")
-        h = int(parts[0])
-        m = int(parts[1])
-        return h*3600 + m*60
-    except:
-        return None
-
+    h, m = map(int, str(hhmm).split(":"))
+    return h*3600 + m*60
+#Distancia euclidiana - Drones - Emergencia - Botar sí o sí una tabla ordenada considerando distancias, 
+# no tiempo real, sino estimación
 def _haversine_dist_dur(coords, vel_kmh=40.0):
     R = 6371e3
     n = len(coords)
     dist = [[0]*n for _ in range(n)]
-    dur = [[0]*n for _ in range(n)]
+    dur  = [[0]*n for _ in range(n)]
     v_ms = vel_kmh * 1000 / 3600
     for i in range(n):
         for j in range(n):
-            if i == j:
-                continue
-            lat1, lon1 = map(math.radians, coords[i])
-            lat2, lon2 = map(math.radians, coords[j])
-            dlat = lat2 - lat1
-            dlon = lon2 - lon1
-            a = math.sin(dlat/2)**2 + math.cos(lat1)*math.cos(lat2)*math.sin(dlon/2)**2
-            d = 2 * R * math.asin(math.sqrt(a))
+            if i==j: continue
+            la1,lo1 = map(math.radians, coords[i])
+            la2,lo2 = map(math.radians, coords[j])
+            dlat = la2-la1; dlon=lo2-lo1
+            a = math.sin(dlat/2)**2 + math.cos(la1)*math.cos(la2)*math.sin(dlon/2)**2
+            d = 2*R*math.asin(math.sqrt(a))
             dist[i][j] = int(d)
-            dur[i][j] = int(d / v_ms)
+            dur [i][j] = int(d/v_ms)
     return dist, dur
 
+#Tomar los puntos de la API - Matriz para el algoritmo las reciba 
 @st.cache_data(ttl="1h", show_spinner=False)
 def _distancia_duracion_matrix(coords):
     if not GOOGLE_MAPS_API_KEY:
         return _haversine_dist_dur(coords)
     n = len(coords)
     dist = [[0]*n for _ in range(n)]
-    dur = [[0]*n for _ in range(n)]
-    batch = max(1, min(n, MAX_ELEMENTS // n))
+    dur  = [[0]*n for _ in range(n)]
+    batch = max(1, min(n, MAX_ELEMENTS//n))
     for i0 in range(0, n, batch):
         resp = gmaps.distance_matrix(
             origins=coords[i0:i0+batch],
@@ -74,17 +69,16 @@ def _distancia_duracion_matrix(coords):
             mode="driving",
             units="metric",
             departure_time=datetime.now(),
-            traffic_model="best_guess"
+            traffic_model="best_guess" #pessimistic / optimistic
         )
-        for i, row in enumerate(resp["rows"]):
-            for j, el in enumerate(row["elements"]):
+        for i,row in enumerate(resp["rows"]):
+            for j,el in enumerate(row["elements"]):
                 dist[i0+i][j] = el.get("distance",{}).get("value",1)
-                dur[i0+i][j] = el.get("duration_in_traffic",{}).get(
-                    "value",
-                    el.get("duration",{}).get("value",1)
-                )
+                dur [i0+i][j] = el.get("duration_in_traffic",{}).get("value",
+                                      el.get("duration",{}).get("value",1))
     return dist, dur
 
+#Datos para la visualización del usuario + Consideraciones del algoritmo
 def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
     coords = list(zip(df["lat"], df["lon"]))
     dist_m, dur_s = _distancia_duracion_matrix(coords)
@@ -105,63 +99,73 @@ def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
         "vehicle_capacities": [capacidad_veh or 10**9] * vehiculos,
         "depot":              0,
     }
-    
+
+
+#Algoritmos diversos
+#OR-Tool + LNS + PCA
 def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
+    """
+    Adaptación del Algoritmo 1 para usar Large Neighborhood Search (LNS)
+    en lugar de Guided Local Search (GLS)
+    """
     manager = pywrapcp.RoutingIndexManager(
-        len(data["distance_matrix"]),
+        len(data["duration_matrix"]),
         data["num_vehicles"],
         data["depot"]
     )
     routing = pywrapcp.RoutingModel(manager)
 
-    # Callback de tiempo del original
-    def time_cb(from_index, to_index):
-        i = manager.IndexToNode(from_index)
-        j = manager.IndexToNode(to_index)
+    # Callback de tiempo (duración + tiempo de servicio)
+    def time_cb(from_idx, to_idx):
+        i = manager.IndexToNode(from_idx)
+        j = manager.IndexToNode(to_idx)
         travel = data["duration_matrix"][i][j]
         service = SERVICE_TIME if i != data["depot"] else 0
         return travel + service
 
-    transit_cb_idx = routing.RegisterTransitCallback(time_cb)
-    routing.SetArcCostEvaluatorOfAllVehicles(transit_cb_idx)
+    transit_cb_index = routing.RegisterTransitCallback(time_cb)
+    routing.SetArcCostEvaluatorOfAllVehicles(transit_cb_index)
 
-    # Dimensión de tiempo como en el original pero con ajustes
+    # Dimensión de tiempo con inicio fijado a las 08:00
     routing.AddDimension(
-        transit_cb_idx,
-        1800,                # slack máximo (30 minutos) - como original
-        24 * 3600,          # límite total de ruta
-        False,              # no fijar tiempo inicial
+        transit_cb_index,
+        1800,                # tiempo de espera permitido (slack)
+        24 * 3600,           # límite total de ruta
+        False,                # <- fijar el tiempo inicial a 0 (necesario para controlarlo)
         "Time"
     )
-    time_dim = routing.GetDimensionOrDie("Time")
-    
-    # Configuración de ventanas como en original
-    for node_index, (ini, fin) in enumerate(data["time_windows"]):
-        index = manager.NodeToIndex(node_index)
-        time_dim.CumulVar(index).SetRange(ini, fin)
-    
-    # Fijar salida de depósito como en original (para todos los vehículos)
+    time_dimension = routing.GetDimensionOrDie("Time")
+
+    # Fijar salida del depósito a las 08:00
     for vehicle_id in range(data["num_vehicles"]):
         start_index = routing.Start(vehicle_id)
-        time_dim.CumulVar(start_index).SetRange(SHIFT_START_SEC, SHIFT_START_SEC)
+        time_dimension.CumulVar(start_index).SetRange(SHIFT_START_SEC, SHIFT_START_SEC)
 
-    # Capacidad (igual en ambos)
+    # Aplicar ventanas de tiempo a cada nodo
+    for node_index, (ini, fin) in enumerate(data["time_windows"]):
+        index = manager.NodeToIndex(node_index)
+        time_dimension.CumulVar(index).SetRange(ini, fin)
+
+    # Capacidad (si hay demandas)
     if any(data["demands"]):
         def demand_cb(index):
             return data["demands"][manager.IndexToNode(index)]
-        demand_cb_idx = routing.RegisterUnaryTransitCallback(demand_cb)
+
+        demand_cb_index = routing.RegisterUnaryTransitCallback(demand_cb)
         routing.AddDimensionWithVehicleCapacity(
-            demand_cb_idx, 0, data["vehicle_capacities"], True, "Capacity"
+            demand_cb_index,
+            0,  # sin capacidad extra
+            data["vehicle_capacities"],
+            True,
+            "Capacity"
         )
 
-    # Parámetros de búsqueda como en original
+    # Parámetros de búsqueda con LNS
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
-    search_parameters.first_solution_strategy = (
-        routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
-    )
-    search_parameters.local_search_metaheuristic = (
-        routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
-    )
+    search_parameters.first_solution_strategy = routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
+
+    # Metaheurística para explorar soluciones vecinas
+    search_parameters.local_search_metaheuristic = routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
     search_parameters.time_limit.seconds = tiempo_max_seg
 
     solution = routing.SolveWithParameters(search_parameters)
@@ -169,7 +173,6 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
     if not solution:
         return None
 
-    # Procesamiento de solución como en original
     rutas, dist_total = [], 0
     for v in range(data["num_vehicles"]):
         idx = routing.Start(v)
@@ -177,9 +180,9 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
         while not routing.IsEnd(idx):
             node = manager.IndexToNode(idx)
             route.append(node)
-            llegada.append(solution.Min(time_dim.CumulVar(idx)))
+            llegada.append(solution.Min(time_dimension.CumulVar(idx)))
             next_idx = solution.Value(routing.NextVar(idx))
-            dist_total += data["distance_matrix"][node][manager.IndexToNode(next_idx)]
+            dist_total += routing.GetArcCostForVehicle(idx, next_idx, v)
             idx = next_idx
 
         rutas.append({
@@ -192,7 +195,7 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
         "routes": rutas,
         "distance_total_m": dist_total
     }
-
+# ============= CARGAR PEDIDOS DESDE FIRESTORE =============
 
 @st.cache_data(ttl=300)
 def cargar_pedidos(fecha, tipo):
