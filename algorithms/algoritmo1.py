@@ -143,7 +143,7 @@ def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
         if tipo == "Sucursal":
             service_times.append(5 * 60)  # 5 minutos
         elif tipo == "Planta":
-            service_times.append(30 * 60)  # 30 minutos
+            service_times.append(60 * 60)  # 30 minutos
         else:
             service_times.append(10 * 60)  # Cliente Delivery o indefinido
 
