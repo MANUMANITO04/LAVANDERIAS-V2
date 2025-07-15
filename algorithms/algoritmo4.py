@@ -20,7 +20,7 @@ gmaps = googlemaps.Client(key=GOOGLE_MAPS_API_KEY)
 
 
 # -------------------- CONSTANTES VRP --------------------
-SERVICE_TIME    = 30       # 10 minutos de servicio
+SERVICE_TIME    = 300       # 10 minutos de servicio
 MAX_ELEMENTS    = 100            # límite de celdas por petición DM API
 SHIFT_START_SEC =  9 * 3600      # 09:00
 SHIFT_END_SEC   = 16*3600 +30*60 # 16:30
@@ -104,10 +104,6 @@ def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
 #Algoritmos diversos
 #OR-Tool + LNS + PCA
 def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
-    """
-    Adaptación del Algoritmo 1 para usar Large Neighborhood Search (LNS)
-    en lugar de Guided Local Search (GLS)
-    """
     manager = pywrapcp.RoutingIndexManager(
         len(data["duration_matrix"]),
         data["num_vehicles"],
@@ -129,7 +125,7 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
     # Dimensión de tiempo con inicio fijado a las 08:00
     routing.AddDimension(
         transit_cb_index,
-        3600,                # tiempo de espera permitido (slack)
+        1800,                # tiempo de espera permitido (slack)
         24 * 3600,           # límite total de ruta
         False,                # <- fijar el tiempo inicial a 0 (necesario para controlarlo)
         "Time"
@@ -144,6 +140,7 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
     # Aplicar ventanas de tiempo a cada nodo
     for node_index, (ini, fin) in enumerate(data["time_windows"]):
         index = manager.NodeToIndex(node_index)
+        time_dimension.SetCumulVarSoftLowerBound(index, 600, 1000)
         time_dimension.CumulVar(index).SetRange(ini, fin)
 
     # Capacidad (si hay demandas)
