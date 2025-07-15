@@ -28,7 +28,7 @@ MAX_ELEMENTS = 100
 SHIFT_START_SEC = 9 * 3600
 SHIFT_END_SEC = 16 * 3600 + 30 * 60
 MARGEN = 15 * 60  # 15 minutos
-SERVICE_TIME = 10 * 60        # ya no se usa directamente (ahora es por punto)
+SERVICE_TIME = 10 * 60  # ya no se usa directamente (reemplazado por tipo)
 
 # ===================== FUNCIONES AUXILIARES =====================
 
@@ -105,11 +105,12 @@ def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
         time_windows.append((ini, fin))
         demandas.append(row.get("demand", 1))
 
-        # Servicio por tipo
-        if row.get("tipo") == "Planta":
-            service_times.append(30 * 60)
+        # Tiempo de servicio diferenciado por tipo
+        tipo = row.get("tipo", "").strip()
+        if tipo == "Sucursal":
+            service_times.append(5 * 60)  # 5 minutos para sucursales
         else:
-            service_times.append(10 * 60)
+            service_times.append(10 * 60)  # 10 minutos para clientes delivery u otros
 
     return {
         "distance_matrix": dist_m,
@@ -238,7 +239,7 @@ def cargar_pedidos(fecha, tipo):
             "time_start":     ts,
             "time_end":       te,
             "demand":         1,
-            "tipo":           data.get("tipo_solicitud", "")  # <--- agregado
+            "tipo":           data.get("tipo_solicitud", "").strip()  # aseguramos texto limpio
         })
 
     return out
