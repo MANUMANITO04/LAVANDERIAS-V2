@@ -10,17 +10,7 @@ SERVICE_TIME = 600  # 10 minutos en segundos
 SHIFT_START_SEC = 9 * 3600  # 9:00 AM
 SHIFT_END_SEC = 16.5 * 3600  # 4:30 PM
 
-def optimizar_ruta_lns_puro(data, tiempo_max_seg=120):
-    """
-    Implementación pura de Large Neighborhood Search para el problema de rutas
-    
-    Args:
-        data: Diccionario con los datos del problema (debe contener 'duration_matrix')
-        tiempo_max_seg: Tiempo máximo de ejecución en segundos
-    
-    Returns:
-        Diccionario con la solución en formato compatible con OR-Tools
-    """
+def optimizar_ruta_42(data, tiempo_max_seg=120):
     # 1. Preparar los datos en formato para LNS
     pedidos = _preparar_datos_para_lns(data)
     
@@ -36,7 +26,6 @@ def optimizar_ruta_lns_puro(data, tiempo_max_seg=120):
     return optimizador.optimizar()
 
 def _preparar_datos_para_lns(data):
-    """Convierte los datos del VRP a formato para LNS"""
     pedidos = []
     n = len(data["duration_matrix"])
     
@@ -119,12 +108,10 @@ class LNSOptimizer:
         return costo
 
     def construir_solucion_inicial(self):
-        """Construye una solución inicial simple"""
-        # Identificar el depósito (asumimos que es el primer elemento)
+
         depot_idx = 0
         pedidos_idx = [i for i in range(len(self.pedidos)) if not self.pedidos[i]["is_depot"]]
-        
-        # Distribuir pedidos entre vehículos
+
         random.shuffle(pedidos_idx)
         rutas = []
         pedidos_por_ruta = len(pedidos_idx) // self.vehiculos
@@ -138,7 +125,6 @@ class LNSOptimizer:
         return rutas
 
     def destruir_solucion(self, solucion):
-        """Fase de destrucción: elimina aleatoriamente parte de la solución"""
         solucion_destruida = copy.deepcopy(solucion)
         pedidos_removidos = []
         
@@ -158,7 +144,6 @@ class LNSOptimizer:
         return solucion_destruida, pedidos_removidos
 
     def reparar_solucion(self, solucion_destruida, pedidos_removidos):
-        """Fase de reparación: reinserta pedidos usando criterio greedy"""
         for pedido_idx in pedidos_removidos:
             mejor_costo = float('inf')
             mejor_posicion = (0, 1)  # (índice ruta, posición en ruta)
@@ -180,15 +165,12 @@ class LNSOptimizer:
         return solucion_destruida
 
     def optimizar(self):
-        """Ejecuta el algoritmo LNS"""
-        # 1. Construir solución inicial
         solucion_actual = self.construir_solucion_inicial()
         costo_actual = sum(self.calcular_costo_ruta(r) for r in solucion_actual)
         
         self.mejor_solucion = copy.deepcopy(solucion_actual)
         self.mejor_costo = costo_actual
         
-        # 2. Bucle principal de LNS
         inicio = datetime.now()
         iteracion = 0
         
@@ -214,7 +196,6 @@ class LNSOptimizer:
         return self._formatear_solucion(self.mejor_solucion)
 
     def _formatear_solucion(self, solucion):
-        """Convierte la solución al formato compatible con OR-Tools"""
         rutas_formateadas = []
         distancia_total = 0
         tiempo_total = 0
@@ -251,5 +232,5 @@ class LNSOptimizer:
             'routes': rutas_formateadas,
             'total_distance': distancia_total,
             'total_time': tiempo_total,
-            'distance_total_m': distancia_total  # Compatibilidad con tu código
+            'distance_total_m': distancia_total 
         }
