@@ -186,7 +186,13 @@ class LNSOptimizer:
         sin_mejora = 0
         
         while (datetime.now() - inicio).seconds < self.tiempo_max and iteracion < self.iteraciones:
-            # ... (destrucción y reparación igual) ...
+            # Paso de destrucción
+            solucion_destruida, pedidos_removidos = self.destruir_solucion(solucion_actual)
+            
+            # Paso de reparación
+            nueva_solucion = self.reparar_solucion(solucion_destruida, pedidos_removidos)
+            nuevo_costo = sum(self.calcular_costo_ruta(r) for r in nueva_solucion)
+            
             
             # Criterio de aceptación mejorado
             violacion_actual = self.calcular_violacion(solucion_actual)
