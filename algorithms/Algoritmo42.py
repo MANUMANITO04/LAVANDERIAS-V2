@@ -35,62 +35,62 @@ class LNSOptimizer:
         self.hora_fin = SHIFT_END_SEC
 
     def calcular_costo_ruta(self, ruta):
-        """Calcula costo con tiempos realistas entre puntos"""
         if len(ruta) < 1:
             return float('inf')
         
         costo = 0
         tiempo_actual = self.hora_inicio
         
-        # Procesar primer punto
+        # Primer punto con su ventana específica
         if len(ruta) > 0:
             tw_start, tw_end = self.time_windows[ruta[0]]
-            tiempo_actual = max(tiempo_actual, tw_start)
-            tiempo_actual += self.tiempo_servicio
+            tiempo_actual = max(tiempo_actual, tw_start)  # Forzar inicio en ventana
+            costo += 0  # No hay tiempo de viaje para el primer punto
         
-        # Procesar puntos restantes
+        # Resto de puntos
         for i in range(len(ruta)-1):
             actual, siguiente = ruta[i], ruta[i+1]
             tiempo_viaje = self.dur_matrix[actual][siguiente]
             tw_start, tw_end = self.time_windows[siguiente]
             
-            tiempo_llegada = tiempo_actual + tiempo_viaje
-            tiempo_llegada = max(tiempo_llegada, tw_start)  # Respetar ventana
+            tiempo_actual += tiempo_viaje
+            tiempo_actual = max(tiempo_actual, tw_start)  # Asegurar ventana
             
-            if tiempo_llegada > tw_end:
+            if tiempo_actual > tw_end:
                 return float('inf')
-            
+                
             costo += tiempo_viaje
-            tiempo_actual = tiempo_llegada + self.tiempo_servicio
+            tiempo_actual += self.tiempo_servicio
         
         return costo
+    
     def construir_solucion_inicial(self):
-        """Construye solución inicial con tiempos diferenciados"""
-        # Ordenar puntos por ventana de tiempo más temprana
-        puntos = sorted(range(self.n), key=lambda x: self.time_windows[x][0])
+        puntos = list(range(self.n))
         
-        # Asignar a vehículos considerando tiempos de viaje
+        # Ordenar por ventana de tiempo más temprana
+        puntos.sort(key=lambda x: self.time_windows[x][0])
+        
+        # Asignar a vehículos con desplazamiento temporal
         rutas = [[] for _ in range(self.vehiculos)]
-        tiempos_vehiculos = [self.hora_inicio] * self.vehiculos
+        tiempo_inicio_vehiculo = [self.hora_inicio + (i * 300) for i in range(self.vehiculos)]  # 5 mins de diferencia
         
         for punto in puntos:
-            # Encontrar vehículo con menor tiempo acumulado
-            vehiculo = tiempos_vehiculos.index(min(tiempos_vehiculos))
+            # Asignar al vehículo con menor tiempo
+            vehiculo = min(range(self.vehiculos), key=lambda i: tiempo_inicio_vehiculo[i])
             
-            # Calcular tiempo de llegada real
-            if not rutas[vehiculo]:  # Primer punto del vehículo
-                tiempo_viaje = 0
+            # Calcular tiempo de llegada realista
+            if not rutas[vehiculo]:
+                tiempo_llegada = tiempo_inicio_vehiculo[vehiculo]
             else:
                 ultimo_punto = rutas[vehiculo][-1]
-                tiempo_viaje = self.dur_matrix[ultimo_punto][punto]
+                tiempo_llegada = tiempo_inicio_vehiculo[vehiculo] + self.dur_matrix[ultimo_punto][punto]
             
-            tiempo_llegada = tiempos_vehiculos[vehiculo] + tiempo_viaje
+            # Ajustar a ventana
             tw_start, _ = self.time_windows[punto]
-            tiempo_llegada = max(tiempo_llegada, tw_start)  # Respetar ventana
+            tiempo_llegada = max(tiempo_llegada, tw_start)
             
-            # Actualizar tiempo del vehículo
-            tiempos_vehiculos[vehiculo] = tiempo_llegada + self.tiempo_servicio
             rutas[vehiculo].append(punto)
+            tiempo_inicio_vehiculo[vehiculo] = tiempo_llegada + self.tiempo_servicio
         
         return rutas
 
