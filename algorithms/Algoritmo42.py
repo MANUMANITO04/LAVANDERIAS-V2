@@ -7,7 +7,7 @@ from datetime import datetime
 SERVICE_TIME = 10 * 60  # 10 minutos en segundos
 SHIFT_START_SEC = 9 * 3600  # 9:00 AM
 SHIFT_END_SEC = 16.5 * 3600  # 4:30 PM
-MAX_TIEMPO_ENTRE_PUNTOS = 30 * 60
+MAX_TIEMPO_ENTRE_PUNTOS = 35 * 60
 PENALIZACION_SALTOS_LARGOS = 50
 
 class LNSOptimizer:
