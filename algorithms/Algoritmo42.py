@@ -186,25 +186,23 @@ class LNSOptimizer:
         # Búsqueda LNS
         inicio = datetime.now()
         iteracion = 0
-        temperatura = 1.0
-        enfriamiento = 0.995
-        while (datetime.now() - inicio).seconds < self.tiempo_max:
+        
+        while (datetime.now() - inicio).seconds < self.tiempo_max and iteracion < self.iteraciones:
             # Destruir y reparar
             solucion_dest, removidos = self.destruir_solucion(solucion_actual)
             nueva_solucion = self.reparar_solucion(solucion_dest, removidos)
             nuevo_costo = sum(self.calcular_costo_ruta(r) for r in nueva_solucion)
             
-            # Criterio de aceptación con enfriamiento
-            delta = nuevo_costo - costo_actual
-            if delta < 0 or random.random() < math.exp(-delta/temperatura):
+            # Criterio de aceptación
+            if nuevo_costo < costo_actual or random.random() < 0.1:
                 solucion_actual = nueva_solucion
                 costo_actual = nuevo_costo
-            
+                
                 if nuevo_costo < self.mejor_costo:
                     self.mejor_solucion = copy.deepcopy(nueva_solucion)
                     self.mejor_costo = nuevo_costo
-        
-            temperatura *= enfriamiento
+            
+            iteracion += 1
         
         return self._formatear_solucion()
 
