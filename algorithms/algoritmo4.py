@@ -98,8 +98,6 @@ def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
         "num_vehicles":       vehiculos,
         "vehicle_capacities": [capacidad_veh or 10**9] * vehiculos,
         "depot":              0,
-        "shift_start_sec":   SHIFT_START_SEC,  # Add this
-        "shift_end_sec":     SHIFT_END_SEC     # Add this
     }
     
 #OR-Tool + LNS + PCA
@@ -137,10 +135,7 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
     # Fijar hora de salida (ej: 08:00)
     for vehicle_id in range(data["num_vehicles"]):
         start_idx = routing.Start(vehicle_id)
-        time_dimension.CumulVar(start_idx).SetRange(
-            data["shift_start_sec"], 
-            data["shift_start_sec"]
-        )
+        time_dimension.CumulVar(start_idx).SetRange(SHIFT_START_SEC, SHIFT_START_SEC)
 
     # Ventanas de tiempo para nodos
     for node, (tw_start, tw_end) in enumerate(data["time_windows"]):
