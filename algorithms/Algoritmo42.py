@@ -9,6 +9,7 @@ SERVICE_TIME = 600  # 10 minutos en segundos
 SHIFT_START_SEC = 9 * 3600  # 9:00 AM
 SHIFT_END_SEC = 16.5 * 3600  # 4:30 PM
 PENALIZACION_VIOLACION = 300  # Penalización alta por violar ventana
+MAX_TIEMPO_ENTRE_PUNTOS = 1800  # 30 minutos en segundos (ajustable)
 
 def optimizar_ruta_42(data, tiempo_max_seg=120):
 
@@ -49,50 +50,70 @@ class LNSOptimizer:
         self.hora_fin = SHIFT_END_SEC
 
     def calcular_costo_ruta(self, ruta):
-        """Versión mejorada con penalización por violación de ventanas"""
+        """Versión modificada para penalizar saltos temporales largos"""
         if not ruta or len(ruta) < 2:
             return float('inf')
-            
-        costo = 0
-        violacion = 0
-        tiempo_actual = self.hora_inicio
         
+        costo = 0
+        tiempo_actual = self.hora_inicio
+        penalizacion_saltos = 0
+    
         for i in range(len(ruta)-1):
             idx_actual = ruta[i]
             idx_siguiente = ruta[i+1]
             tw_start, tw_end = self.time_windows[idx_siguiente]
-            
+        
             tiempo_viaje = self.dur_matrix[idx_actual][idx_siguiente]
+        
+            # Penalización por saltos largos
+            if tiempo_viaje > MAX_TIEMPO_ENTRE_PUNTOS:
+                penalizacion_saltos += (tiempo_viaje - MAX_TIEMPO_ENTRE_PUNTOS) * 10
             
-            # Manejo mejorado de ventanas
+            # Manejo de ventanas de tiempo
             if tiempo_actual < tw_start:
-                tiempo_actual = tw_start  # Esperar hasta apertura
+                tiempo_actual = tw_start
             elif tiempo_actual > tw_end:
-                violacion += (tiempo_actual - tw_end) * self.penalizacion_violacion
+                return float('inf')  # Solución inválida
             
-            costo += tiempo_viaje + violacion
+            costo += tiempo_viaje + penalizacion_saltos
             tiempo_actual += tiempo_viaje + self.tiempo_servicio
-            
+        
         return costo
 
     def construir_solucion_inicial(self):
-        """Versión mejorada que considera ventanas de tiempo"""
-        n = len(self.dist_matrix)
-        depot_idx = 0
-        
+        """Construcción inicial que agrupa puntos cercanos temporalmente"""
         # Ordenar pedidos por ventana de tiempo más temprana
-        pedidos_idx = [i for i in range(n) if i != depot_idx]
-        pedidos_idx.sort(key=lambda x: self.time_windows[x][0])
-        
-        # Distribución más inteligente considerando ventanas
+        pedidos = sorted(
+            [i for i in range(1, self.n)],  # Excluir depósito (0)
+            key=lambda x: self.time_windows[x][0]
+        )
+    
+        # Agrupar pedidos con ventanas similares
+        grupos = []
+        grupo_actual = []
+        ultimo_fin = 0
+    
+        for pedido in pedidos:
+            inicio, fin = self.time_windows[pedido]
+            if not grupo_actual or inicio <= ultimo_fin + MAX_TIEMPO_ENTRE_PUNTOS:
+                grupo_actual.append(pedido)
+                ultimo_fin = max(ultimo_fin, fin)
+            else:
+                grupos.append(grupo_actual)
+                grupo_actual = [pedido]
+                ultimo_fin = fin
+    
+        if grupo_actual:
+            grupos.append(grupo_actual)
+    
+        # Asignar grupos a vehículos
         rutas = []
         for i in range(self.vehiculos):
-            # Asignar pedidos consecutivos por ventana a cada vehículo
-            inicio = i * len(pedidos_idx) // self.vehiculos
-            fin = (i+1) * len(pedidos_idx) // self.vehiculos
-            ruta = [depot_idx] + pedidos_idx[inicio:fin] + [depot_idx]
-            rutas.append(ruta)
-            
+            if i < len(grupos):
+                rutas.append([0] + grupos[i] + [0])
+            else:
+                rutas.append([0, 0])  # Vehículo sin asignación
+    
         return rutas
 
     def destruir_solucion(self, solucion):
@@ -140,34 +161,32 @@ class LNSOptimizer:
         return tiempo
 
     def reparar_solucion(self, solucion_destruida, pedidos_removidos):
-        """Reparación mejorada con prioridad a factibilidad"""
+        """Reparación que evita insertar puntos que creen saltos largos"""
         for pedido_idx in pedidos_removidos:
-            tw_start, tw_end = self.time_windows[pedido_idx]
             mejor_posicion = None
             mejor_costo = float('inf')
             
-            # Primero buscar posiciones que no violen la ventana
             for i_ruta, ruta in enumerate(solucion_destruida):
                 for j in range(1, len(ruta)):
-                    tiempo_insercion = self.estimar_tiempo_llegada(ruta[:j] + [pedido_idx] + ruta[j:], j)
-                    if tiempo_insercion <= tw_end:  # Posición factible
-                        costo = self.calcular_costo_ruta(ruta[:j] + [pedido_idx] + ruta[j:])
-                        if costo < mejor_costo:
-                            mejor_costo = costo
-                            mejor_posicion = (i_ruta, j)
-            
-            # Si no encontró posición factible, usar la mejor disponible
-            if mejor_posicion is None:
-                for i_ruta, ruta in enumerate(solucion_destruida):
-                    for j in range(1, len(ruta)):
-                        costo = self.calcular_costo_ruta(ruta[:j] + [pedido_idx] + ruta[j:])
-                        if costo < mejor_costo:
-                            mejor_costo = costo
-                            mejor_posicion = (i_ruta, j)
+                    # Calcular tiempo de viaje antes y después de la inserción
+                    tiempo_antes = self.dur_matrix[ruta[j-1]][pedido_idx]
+                    tiempo_despues = self.dur_matrix[pedido_idx][ruta[j]]
+                
+                    # Rechazar inserciones que creen saltos largos
+                    if tiempo_antes > MAX_TIEMPO_ENTRE_PUNTOS or tiempo_despues > MAX_TIEMPO_ENTRE_PUNTOS:
+                        continue
+                    
+                    # Calcular costo de esta inserción
+                    ruta_temp = ruta[:j] + [pedido_idx] + ruta[j:]
+                    costo = self.calcular_costo_ruta(ruta_temp)
+                
+                    if costo < mejor_costo:
+                        mejor_costo = costo
+                        mejor_posicion = (i_ruta, j)
             
             if mejor_posicion:
                 solucion_destruida[mejor_posicion[0]].insert(mejor_posicion[1], pedido_idx)
-        
+    
         return solucion_destruida
 
 
