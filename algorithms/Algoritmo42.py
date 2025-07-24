@@ -5,10 +5,10 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 # Configuración de la ruta
-SERVICE_TIME = 600  # 10 minutos en segundos
+SERVICE_TIME = 1000  # 10 minutos en segundos
 SHIFT_START_SEC = 9 * 3600  # 9:00 AM
 SHIFT_END_SEC = 16.5 * 3600  # 4:30 PM
-PENALIZACION_VIOLACION = 500  # Penalización alta por violar ventana
+PENALIZACION_VIOLACION = 100  # Penalización alta por violar ventana
 
 def optimizar_ruta_42(data, tiempo_max_seg=120):
 
