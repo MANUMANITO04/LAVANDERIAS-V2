@@ -230,7 +230,5 @@ class LNSOptimizer:
         
         return {
             'routes': rutas_formateadas,
-            'total_distance': distancia_total,
-            'total_time': tiempo_total,
             'distance_total_m': distancia_total 
         }
