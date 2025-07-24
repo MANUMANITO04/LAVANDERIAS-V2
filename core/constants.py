@@ -3,7 +3,8 @@
 import os
 import streamlit as st
 
-GOOGLE_MAPS_API_KEY = st.secrets.get("google_maps", {}).get("api_key") or os.getenv("GOOGLE_MAPS_API_KEY")
+GOOGLE_MAPS_API_KEY = AIzaSyCmHD1vPIl3xJFl39QUhcaEtj4hui1W6GM
+#GOOGLE_MAPS_API_KEY = st.secrets.get("google_maps", {}).get("api_key") or os.getenv("GOOGLE_MAPS_API_KEY")
 
 PUNTOS_FIJOS_COMPLETOS = [
     {"lat": -16.4141434959913, "lon": -71.51839574233342, "direccion": "Cochera", "tipo": "fijo", "orden": 0, "hora": "08:00"},
