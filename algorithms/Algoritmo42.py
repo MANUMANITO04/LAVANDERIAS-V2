@@ -8,6 +8,7 @@ SERVICE_TIME = 600  # 10 minutos en segundos
 SHIFT_START_SEC = 9 * 3600  # 9:00 AM
 SHIFT_END_SEC = 16.5 * 3600  # 4:30 PM
 MAX_TIEMPO_ENTRE_PUNTOS = 1800  # 30 minutos máximo entre puntos
+PENALIZACION_SALTOS_LARGOS = 20
 
 class LNSOptimizer:
     def __init__(self, dist_matrix, dur_matrix, time_windows, vehiculos=1, tiempo_max=120):
@@ -49,7 +50,7 @@ class LNSOptimizer:
             
             # Penalización por saltos largos
             if tiempo_viaje > MAX_TIEMPO_ENTRE_PUNTOS:
-                penalizacion += (tiempo_viaje - MAX_TIEMPO_ENTRE_PUNTOS) * 10
+                penalizacion += (tiempo_viaje - MAX_TIEMPO_ENTRE_PUNTOS) * PENALIZACION_SALTOS_LARGOS 
                 
             # Manejo de ventanas
             if tiempo_actual < tw_start:
