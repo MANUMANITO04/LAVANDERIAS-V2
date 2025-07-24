@@ -29,7 +29,13 @@ def optimizar_ruta_42(data, tiempo_max_seg=120):
 
 class LNSOptimizer:
     def __init__(self, dist_matrix, dur_matrix, time_windows, vehiculos=1, tiempo_max=120):
-        # ... (configuración inicial igual) ...
+        self.dist_matrix = dist_matrix
+        self.dur_matrix = dur_matrix
+        self.time_windows = time_windows
+        self.vehiculos = vehiculos
+        self.tiempo_max = tiempo_max
+        self.mejor_solucion = None
+        self.mejor_costo = float('inf')
         
         # Nuevos parámetros para manejo de ventanas
         self.penalizacion_violacion = PENALIZACION_VIOLACION
@@ -38,6 +44,9 @@ class LNSOptimizer:
         # Ajustar parámetros de búsqueda
         self.iteraciones = 2000  # Más iteraciones para mejor exploración
         self.porcentaje_destruccion = 0.4  # Mayor destrucción para diversificación
+        self.tiempo_servicio = SERVICE_TIME
+        self.hora_inicio = SHIFT_START_SEC
+        self.hora_fin = SHIFT_END_SEC
 
     def calcular_costo_ruta(self, ruta):
         """Versión mejorada con penalización por violación de ventanas"""
