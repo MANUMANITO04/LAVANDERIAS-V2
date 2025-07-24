@@ -69,7 +69,7 @@ class LNSOptimizer:
         return costo
     def construir_solucion_inicial(self):
         """Construye solución inicial agrupando puntos geográfica y temporalmente cercanos"""
-        pedidos_idx = [i for i in range(0, self.n)]
+        pedidos_idx = [i for i in range(1, self.n)]
     
         # Ordenar por proximidad geográfica y temporal
         pedidos_idx.sort(key=lambda x: (
