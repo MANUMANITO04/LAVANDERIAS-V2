@@ -33,8 +33,7 @@ def _hora_a_segundos(hhmm):
         return None
     h, m = map(int, str(hhmm).split(":"))
     return h*3600 + m*60
-#Distancia euclidiana - Drones - Emergencia - Botar sí o sí una tabla ordenada considerando distancias, 
-# no tiempo real, sino estimación
+
 def _haversine_dist_dur(coords, vel_kmh=30.0):
     R = 6371e3
     n = len(coords)
@@ -53,7 +52,7 @@ def _haversine_dist_dur(coords, vel_kmh=30.0):
             dur [i][j] = int(d/v_ms)
     return dist, dur
 
-#Tomar los puntos de la API - Matriz para el algoritmo las reciba 
+
 @st.cache_data(ttl="1h", show_spinner=False)
 def _distancia_duracion_matrix(coords):
     if not GOOGLE_MAPS_API_KEY:
@@ -78,7 +77,7 @@ def _distancia_duracion_matrix(coords):
                                       el.get("duration",{}).get("value",1))
     return dist, dur
 
-#Datos para la visualización del usuario + Consideraciones del algoritmo
+
 def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
     coords = list(zip(df["lat"], df["lon"]))
     dist_m, dur_s = _distancia_duracion_matrix(coords)
@@ -102,7 +101,6 @@ def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
     
 #OR-Tool + LNS + PCA
 def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
-    # 1. Configuración inicial del modelo
     manager = pywrapcp.RoutingIndexManager(
         len(data["duration_matrix"]),
         data["num_vehicles"],
@@ -110,8 +108,6 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
     )
     routing = pywrapcp.RoutingModel(manager)
 
-    # 2. Callbacks y dimensiones
-    # Callback de tiempo (duración + servicio)
     def time_cb(from_idx, to_idx):
         i = manager.IndexToNode(from_idx)
         j = manager.IndexToNode(to_idx)
@@ -122,7 +118,6 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
     transit_cb_index = routing.RegisterTransitCallback(time_cb)
     routing.SetArcCostEvaluatorOfAllVehicles(transit_cb_index)
 
-    # Dimensión de tiempo
     routing.AddDimension(
         transit_cb_index,
         1800,  # Slack máximo (30 mins)
@@ -132,19 +127,18 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
     )
     time_dimension = routing.GetDimensionOrDie("Time")
 
-    # Fijar hora de salida usando constante o dato proporcionado
+
     shift_start = data.get("shift_start_sec", SHIFT_START_SEC)
     for vehicle_id in range(data["num_vehicles"]):
         start_idx = routing.Start(vehicle_id)
         time_dimension.CumulVar(start_idx).SetRange(SHIFT_START_SEC, SHIFT_START_SEC)
 
-    # Ventanas de tiempo para nodos
+
     for node, (tw_start, tw_end) in enumerate(data["time_windows"]):
         idx = manager.NodeToIndex(node)
         time_dimension.CumulVar(idx).SetRange(tw_start, tw_end)
         time_dimension.SetCumulVarSoftLowerBound(idx, tw_start, 100)
 
-    # 3. Restricción de capacidad (opcional)
     if "demands" in data and any(data["demands"]):
         def demand_cb(idx):
             return data["demands"][manager.IndexToNode(idx)]
@@ -158,31 +152,29 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
             "Capacity"
         )
 
-    # 4. Configuración de búsqueda (versión robusta)
+
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
     search_parameters.first_solution_strategy = (
         routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
     )
     
-    # Configuración alternativa que funciona en más versiones
+
     search_parameters.local_search_metaheuristic = (
         routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
     )
     
     search_parameters.time_limit.seconds = tiempo_max_seg
-    
-    # Opcional: Habilitar operadores LNS manualmente
+
     search_parameters.local_search_operators.use_path_lns = pywrapcp.BOOL_TRUE
     search_parameters.local_search_operators.use_inactive_lns = pywrapcp.BOOL_TRUE
 
-    # 5. Resolver el problema
     solution = routing.SolveWithParameters(search_parameters)
 
     if not solution:
         st.warning("No se encontró solución con los parámetros actuales")
         return None
 
-    # 6. Procesar resultados
+
     rutas = []
     dist_total = 0
     for vehicle_id in range(data["num_vehicles"]):
