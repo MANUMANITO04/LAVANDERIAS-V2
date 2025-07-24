@@ -35,78 +35,64 @@ class LNSOptimizer:
         self.hora_fin = SHIFT_END_SEC
 
     def calcular_costo_ruta(self, ruta):
-        """Calcula costo con penalizaciones mejoradas"""
-        if len(ruta) < 2:
+        """Calcula costo con tiempos realistas entre puntos"""
+        if len(ruta) < 1:
             return float('inf')
-    
+        
         costo = 0
         tiempo_actual = self.hora_inicio
-        penalizacion = 0
         
+        # Procesar primer punto
+        if len(ruta) > 0:
+            tw_start, tw_end = self.time_windows[ruta[0]]
+            tiempo_actual = max(tiempo_actual, tw_start)
+            tiempo_actual += self.tiempo_servicio
+        
+        # Procesar puntos restantes
         for i in range(len(ruta)-1):
             actual, siguiente = ruta[i], ruta[i+1]
-            tw_start, tw_end = self.time_windows[siguiente]
             tiempo_viaje = self.dur_matrix[actual][siguiente]
+            tw_start, tw_end = self.time_windows[siguiente]
             
-            # Penalización exponencial por saltos largos
-            if tiempo_viaje > MAX_TIEMPO_ENTRE_PUNTOS:
-                exceso = tiempo_viaje - MAX_TIEMPO_ENTRE_PUNTOS
-                penalizacion += (exceso ** 2) * 10  # Penalización cuadrática
+            tiempo_llegada = tiempo_actual + tiempo_viaje
+            tiempo_llegada = max(tiempo_llegada, tw_start)  # Respetar ventana
             
-            # Manejo estricto de ventanas
-            if tiempo_actual < tw_start:
-                tiempo_actual = tw_start
-            elif tiempo_actual > tw_end:
+            if tiempo_llegada > tw_end:
                 return float('inf')
             
-            costo += tiempo_viaje + penalizacion
-            tiempo_actual += tiempo_viaje + self.tiempo_servicio
-        
-        # Penalización adicional por dispersión temporal
-        tiempo_total = tiempo_actual - self.hora_inicio
-        costo += tiempo_total * 0.1  # Favorecer rutas más compactas
+            costo += tiempo_viaje
+            tiempo_actual = tiempo_llegada + self.tiempo_servicio
         
         return costo
     def construir_solucion_inicial(self):
-        """Construye solución inicial agrupando puntos geográfica y temporalmente cercanos"""
-        pedidos_idx = [i for i in range(1, self.n)]
-    
-        # Ordenar por proximidad geográfica y temporal
-        pedidos_idx.sort(key=lambda x: (
-            self.time_windows[x][0],  # Hora inicio ventana
-            self.dist_matrix[0][x]    # Distancia al depósito
-        ))
-    
-        # Agrupar considerando distancia y tiempo
-        grupos = [[] for _ in range(self.vehiculos)]
-        distancias = [0] * self.vehiculos
+        """Construye solución inicial con tiempos diferenciados"""
+        # Ordenar puntos por ventana de tiempo más temprana
+        puntos = sorted(range(self.n), key=lambda x: self.time_windows[x][0])
         
-        for pedido in pedidos_idx:
-            # Encontrar vehículo más cercano con tiempo compatible
-            mejor_vehiculo = None
-            mejor_tiempo_extra = float('inf')
+        # Asignar a vehículos considerando tiempos de viaje
+        rutas = [[] for _ in range(self.vehiculos)]
+        tiempos_vehiculos = [self.hora_inicio] * self.vehiculos
+        
+        for punto in puntos:
+            # Encontrar vehículo con menor tiempo acumulado
+            vehiculo = tiempos_vehiculos.index(min(tiempos_vehiculos))
             
-            for i in range(self.vehiculos):
-                if not grupos[i]:
-                    tiempo_extra = self.dur_matrix[0][pedido]
-                else:
-                    ultimo_punto = grupos[i][-1]
-                    tiempo_extra = self.dur_matrix[ultimo_punto][pedido]
-                
-                # Verificar compatibilidad temporal
-                tiempo_llegada = distancias[i] + tiempo_extra
-                tw_start, tw_end = self.time_windows[pedido]
-                if tiempo_llegada <= tw_end + MAX_TIEMPO_ENTRE_PUNTOS:
-                    if tiempo_extra < mejor_tiempo_extra:
-                        mejor_tiempo_extra = tiempo_extra
-                        mejor_vehiculo = i
+            # Calcular tiempo de llegada real
+            if not rutas[vehiculo]:  # Primer punto del vehículo
+                tiempo_viaje = 0
+            else:
+                ultimo_punto = rutas[vehiculo][-1]
+                tiempo_viaje = self.dur_matrix[ultimo_punto][punto]
+            
+            tiempo_llegada = tiempos_vehiculos[vehiculo] + tiempo_viaje
+            tw_start, _ = self.time_windows[punto]
+            tiempo_llegada = max(tiempo_llegada, tw_start)  # Respetar ventana
+            
+            # Actualizar tiempo del vehículo
+            tiempos_vehiculos[vehiculo] = tiempo_llegada + self.tiempo_servicio
+            rutas[vehiculo].append(punto)
         
-            if mejor_vehiculo is not None:
-                grupos[mejor_vehiculo].append(pedido)
-                distancias[mejor_vehiculo] += mejor_tiempo_extra + self.tiempo_servicio
-        
-        # Construir rutas completas
-        return [[0] + grupo + [0] for grupo in grupos]
+        return rutas
 
     def destruir_solucion(self, solucion):
         """Destrucción que prioriza puntos con saltos largos"""
