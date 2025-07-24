@@ -19,6 +19,7 @@ from algorithms.algoritmo1 import optimizar_ruta_algoritmo22, cargar_pedidos, _c
 from algorithms.algoritmo2 import optimizar_ruta_cw_tabu
 from algorithms.algoritmo3 import optimizar_ruta_cp_sat
 from algorithms.algoritmo4 import optimizar_ruta_algoritmo4
+from algorithms.Algoritmo42 import optimizar_ruta_42
 
 COCHERA = {
     "lat": -16.4141434959913,
@@ -34,6 +35,7 @@ ALG_MAP = {
     "Algoritmo 2 - Clarke Wrigth + Tabu Search": optimizar_ruta_cw_tabu,
     "Algoritmo 3 - CP - SAT": optimizar_ruta_cp_sat,
     "Algoritmo 4 - PAC + LNS": optimizar_ruta_algoritmo4,
+    "Algoritmo 5 - LNS Puro": optimizar_ruta_lns_puro
 }
 
 def _hora_a_segundos(hhmm: str) -> int | None:
