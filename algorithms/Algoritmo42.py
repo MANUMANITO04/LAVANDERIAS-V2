@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 import pandas as pd
 
 # Configuración de la ruta
-SERVICE_TIME = 900  # 15 minutos en segundos
+SERVICE_TIME = 1000  # 15 minutos en segundos
 SHIFT_START_SEC = 9 * 3600  # 9:00 AM
 SHIFT_END_SEC = 16.5 * 3600  # 4:30 PM
 
@@ -46,8 +46,8 @@ class LNSOptimizer:
         self.mejor_costo = float('inf')
         
         # Configuración LNS
-        self.iteraciones = 2000
-        self.porcentaje_destruccion = 0.4
+        self.iteraciones = 4000
+        self.porcentaje_destruccion = 0.3
         self.tiempo_servicio = SERVICE_TIME
         self.hora_inicio = SHIFT_START_SEC
         self.hora_fin = SHIFT_END_SEC
