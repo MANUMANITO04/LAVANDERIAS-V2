@@ -98,6 +98,8 @@ def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
         "num_vehicles":       vehiculos,
         "vehicle_capacities": [capacidad_veh or 10**9] * vehiculos,
         "depot":              0,
+        "shift_start_sec":   SHIFT_START_SEC,  # Add this
+        "shift_end_sec":     SHIFT_END_SEC     # Add this
     }
     
 #OR-Tool + LNS + PCA
