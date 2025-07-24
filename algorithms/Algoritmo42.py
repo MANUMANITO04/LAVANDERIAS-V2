@@ -41,58 +41,44 @@ class LNSOptimizer:
         costo = 0
         tiempo_actual = self.hora_inicio
         
-        # Primer punto con su ventana específica
-        if len(ruta) > 0:
-            tw_start, tw_end = self.time_windows[ruta[0]]
-            tiempo_actual = max(tiempo_actual, tw_start)  # Forzar inicio en ventana
-            costo += 0  # No hay tiempo de viaje para el primer punto
-        
-        # Resto de puntos
-        for i in range(len(ruta)-1):
-            actual, siguiente = ruta[i], ruta[i+1]
-            tiempo_viaje = self.dur_matrix[actual][siguiente]
-            tw_start, tw_end = self.time_windows[siguiente]
-            
-            tiempo_actual += tiempo_viaje
-            tiempo_actual = max(tiempo_actual, tw_start)  # Asegurar ventana
-            
-            if tiempo_actual > tw_end:
-                return float('inf')
+        for i in range(len(ruta)):
+            # Primer punto de la ruta
+            if i == 0:
+                tw_start, tw_end = self.time_windows[ruta[i]]
+                tiempo_actual = max(tiempo_actual, tw_start)  # Respetar ventana
+            # Puntos subsiguientes
+            else:
+                tiempo_viaje = self.dur_matrix[ruta[i-1]][ruta[i]]
+                tw_start, tw_end = self.time_windows[ruta[i]]
+                tiempo_actual += tiempo_viaje
+                tiempo_actual = max(tiempo_actual, tw_start)
                 
-            costo += tiempo_viaje
+                if tiempo_actual > tw_end:
+                    return float('inf')
+                
+                costo += tiempo_viaje
+            
             tiempo_actual += self.tiempo_servicio
         
         return costo
     
     def construir_solucion_inicial(self):
-        puntos = list(range(self.n))
+        """Asigna puntos aleatoriamente a vehículos, todos tratados igual"""
+        puntos = list(range(self.n))  # Todos los puntos son normales
+        random.shuffle(puntos)
         
-        # Ordenar por ventana de tiempo más temprana
-        puntos.sort(key=lambda x: self.time_windows[x][0])
+        # Dividir equitativamente entre vehículos
+        rutas = []
+        puntos_por_vehiculo = math.ceil(len(puntos) / self.vehiculos)
         
-        # Asignar a vehículos con desplazamiento temporal
-        rutas = [[] for _ in range(self.vehiculos)]
-        tiempo_inicio_vehiculo = [self.hora_inicio + (i * 300) for i in range(self.vehiculos)]  # 5 mins de diferencia
-        
-        for punto in puntos:
-            # Asignar al vehículo con menor tiempo
-            vehiculo = min(range(self.vehiculos), key=lambda i: tiempo_inicio_vehiculo[i])
-            
-            # Calcular tiempo de llegada realista
-            if not rutas[vehiculo]:
-                tiempo_llegada = tiempo_inicio_vehiculo[vehiculo]
-            else:
-                ultimo_punto = rutas[vehiculo][-1]
-                tiempo_llegada = tiempo_inicio_vehiculo[vehiculo] + self.dur_matrix[ultimo_punto][punto]
-            
-            # Ajustar a ventana
-            tw_start, _ = self.time_windows[punto]
-            tiempo_llegada = max(tiempo_llegada, tw_start)
-            
-            rutas[vehiculo].append(punto)
-            tiempo_inicio_vehiculo[vehiculo] = tiempo_llegada + self.tiempo_servicio
+        for i in range(self.vehiculos):
+            inicio = i * puntos_por_vehiculo
+            fin = min((i + 1) * puntos_por_vehiculo, len(puntos))
+            ruta = puntos[inicio:fin]  # No hay depósito inicial/final
+            rutas.append(ruta)
         
         return rutas
+    
 
     def destruir_solucion(self, solucion):
         """Destrucción que prioriza puntos con saltos largos"""
@@ -129,34 +115,21 @@ class LNSOptimizer:
         return solucion_dest, removidos
 
     def reparar_solucion(self, solucion, removidos):
-        """Reparación con búsqueda local mejorada"""
         for punto in removidos:
-            tw_punto = self.time_windows[punto]
+            mejor_costo = float('inf')
+            mejor_posicion = None
             
-            # Generar todas las posibles inserciones factibles
-            candidatos = []
             for i_ruta, ruta in enumerate(solucion):
-                for j in range(1, len(ruta)):
-                    # Calcular tiempo de llegada estimado
-                    tiempo_llegada = self.hora_inicio
-                    for k in range(1, j):
-                        tiempo_llegada += self.dur_matrix[ruta[k-1]][ruta[k]] + self.tiempo_servicio
+                for j in range(len(ruta) + 1):  # Permite insertar al inicio/final
+                    ruta_temp = ruta[:j] + [punto] + ruta[j:]
+                    costo = self.calcular_costo_ruta(ruta_temp)
                     
-                    tiempo_llegada += self.dur_matrix[ruta[j-1]][punto]
-                    
-                    # Verificar factibilidad
-                    if (tiempo_llegada <= tw_punto[1] and 
-                        self.dur_matrix[punto][ruta[j]] <= MAX_TIEMPO_ENTRE_PUNTOS):
-                        
-                        ruta_temp = ruta[:j] + [punto] + ruta[j:]
-                        costo = self.calcular_costo_ruta(ruta_temp)
-                        candidatos.append((costo, i_ruta, j))
+                    if costo < mejor_costo:
+                        mejor_costo = costo
+                        mejor_posicion = (i_ruta, j)
             
-            # Elegir la mejor inserción factible
-            if candidatos:
-                candidatos.sort()
-                mejor_costo, i_ruta, j = candidatos[0]
-                solucion[i_ruta].insert(j, punto)
+            if mejor_posicion:
+                solucion[mejor_posicion[0]].insert(mejor_posicion[1], punto)
         
         return solucion
 
@@ -203,21 +176,19 @@ class LNSOptimizer:
         for i, ruta in enumerate(self.mejor_solucion):
             tiempos = []
             tiempo_actual = self.hora_inicio
-            tiempos.append(tiempo_actual)
             
-            for j in range(1, len(ruta)):
-                actual, siguiente = ruta[j-1], ruta[j]
-                distancia = self.dist_matrix[actual][siguiente]
-                tiempo_viaje = self.dur_matrix[actual][siguiente]
+            for j in range(len(ruta)):
+                # Todos los puntos (incluido el primero) calculan su tiempo
+                if j > 0:
+                    distancia = self.dist_matrix[ruta[j-1]][ruta[j]]
+                    tiempo_viaje = self.dur_matrix[ruta[j-1]][ruta[j]]
+                    tiempo_actual += tiempo_viaje
+                    distancia_total += distancia
                 
-                # Ajustar por ventana
-                tw_start, _ = self.time_windows[siguiente]
-                if tiempo_actual < tw_start:
-                    tiempo_actual = tw_start
-                
+                tw_start, _ = self.time_windows[ruta[j]]
+                tiempo_actual = max(tiempo_actual, tw_start)
                 tiempos.append(tiempo_actual)
-                tiempo_actual += tiempo_viaje + self.tiempo_servicio
-                distancia_total += distancia
+                tiempo_actual += self.tiempo_servicio
             
             rutas_formateadas.append({
                 'vehicle': i,
