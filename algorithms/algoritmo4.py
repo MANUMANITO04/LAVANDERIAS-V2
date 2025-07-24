@@ -102,7 +102,7 @@ def _crear_data_model(df, vehiculos=1, capacidad_veh=None):
     
 #OR-Tool + LNS + PCA
 def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
-   # 1. Configuración inicial del modelo
+    # 1. Configuración inicial del modelo
     manager = pywrapcp.RoutingIndexManager(
         len(data["duration_matrix"]),
         data["num_vehicles"],
@@ -116,7 +116,7 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
         i = manager.IndexToNode(from_idx)
         j = manager.IndexToNode(to_idx)
         travel = data["duration_matrix"][i][j]
-        service = data.get("service_times", {}).get(i, 0)
+        service = SERVICE_TIME  # Usamos la constante directamente
         return travel + service
 
     transit_cb_index = routing.RegisterTransitCallback(time_cb)
@@ -132,7 +132,8 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
     )
     time_dimension = routing.GetDimensionOrDie("Time")
 
-    # Fijar hora de salida (ej: 08:00)
+    # Fijar hora de salida usando constante o dato proporcionado
+    shift_start = data.get("shift_start_sec", SHIFT_START_SEC)
     for vehicle_id in range(data["num_vehicles"]):
         start_idx = routing.Start(vehicle_id)
         time_dimension.CumulVar(start_idx).SetRange(SHIFT_START_SEC, SHIFT_START_SEC)
@@ -141,7 +142,7 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
     for node, (tw_start, tw_end) in enumerate(data["time_windows"]):
         idx = manager.NodeToIndex(node)
         time_dimension.CumulVar(idx).SetRange(tw_start, tw_end)
-        time_dimension.SetCumulVarSoftLowerBound(idx, tw_start, 100)  # Penalización por llegar tarde
+        time_dimension.SetCumulVarSoftLowerBound(idx, tw_start, 100)
 
     # 3. Restricción de capacidad (opcional)
     if "demands" in data and any(data["demands"]):
@@ -157,28 +158,31 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
             "Capacity"
         )
 
+    # 4. Configuración de búsqueda (versión robusta)
     search_parameters = pywrapcp.DefaultRoutingSearchParameters()
-    
     search_parameters.first_solution_strategy = (
         routing_enums_pb2.FirstSolutionStrategy.PATH_CHEAPEST_ARC
     )
-
+    
+    # Configuración alternativa que funciona en más versiones
     search_parameters.local_search_metaheuristic = (
-        routing_enums_pb2.LocalSearchMetaheuristic.LARGE_NEIGHBORHOOD_SEARCH
+        routing_enums_pb2.LocalSearchMetaheuristic.GUIDED_LOCAL_SEARCH
     )
+    
     search_parameters.time_limit.seconds = tiempo_max_seg
+    
+    # Opcional: Habilitar operadores LNS manualmente
+    search_parameters.local_search_operators.use_path_lns = pywrapcp.BOOL_TRUE
+    search_parameters.local_search_operators.use_inactive_lns = pywrapcp.BOOL_TRUE
 
-    search_parameters.lns_operators = {
-        routing_enums_pb2.LNSOperator.PATH_LNS: routing_enums_pb2.LNSOperator.APPLY_TO_ALL_SOLUTIONS,
-        routing_enums_pb2.LNSOperator.RELOCATE: routing_enums_pb2.LNSOperator.APPLY_TO_BEST_SOLUTIONS,
-        routing_enums_pb2.LNSOperator.TWO_OPT: routing_enums_pb2.LNSOperator.APPLY_TO_BEST_SOLUTIONS,
-    }
-
+    # 5. Resolver el problema
     solution = routing.SolveWithParameters(search_parameters)
 
     if not solution:
+        st.warning("No se encontró solución con los parámetros actuales")
         return None
 
+    # 6. Procesar resultados
     rutas = []
     dist_total = 0
     for vehicle_id in range(data["num_vehicles"]):
@@ -202,7 +206,6 @@ def optimizar_ruta_algoritmo4(data, tiempo_max_seg=120):
     return {
         "routes": rutas,
         "total_distance": dist_total,
-        "total_time": solution.ObjectiveValue()
     }
 # ============= CARGAR PEDIDOS DESDE FIRESTORE =============
 
