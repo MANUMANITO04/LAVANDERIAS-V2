@@ -4,7 +4,7 @@ import math
 from datetime import datetime
 
 # Configuración de la ruta
-SERVICE_TIME = 10 * 60  # 10 minutos en segundos
+SERVICE_TIME = 15 * 60  # 10 minutos en segundos
 SHIFT_START_SEC = 9 * 3600  # 9:00 AM
 SHIFT_END_SEC = 16.5 * 3600  # 4:30 PM
 MAX_TIEMPO_ENTRE_PUNTOS = 25 * 60
