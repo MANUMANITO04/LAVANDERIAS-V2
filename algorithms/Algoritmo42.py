@@ -202,7 +202,7 @@ class LNSOptimizer:
             'distance_total_m': distancia_total
         }
 
-def optimizar_ruta_42(data, tiempo_max_seg=120):
+def optimizar_ruta_LNS(data, tiempo_max_seg=120):
     """Función principal para integración"""
     # Validación de datos
     required = ['distance_matrix', 'duration_matrix', 'time_windows']
