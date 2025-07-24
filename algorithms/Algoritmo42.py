@@ -195,40 +195,49 @@ class LNSOptimizer:
         
         return self._formatear_solucion(self.mejor_solucion)
 
-    def _formatear_solucion(self, solucion):
-        rutas_formateadas = []
-        distancia_total = 0
-        tiempo_total = 0
+def _formatear_solucion(self, solucion):
+    """Convierte la solución al formato compatible con OR-Tools"""
+    rutas_formateadas = []
+    distancia_total = 0
+    tiempo_total = 0
+    
+    for i, ruta in enumerate(solucion):
+        tiempos_llegada = []
+        tiempo_actual = self.hora_inicio
         
-        for i, ruta in enumerate(solucion):
-            tiempos_llegada = []
-            tiempo_actual = self.hora_inicio
-            
-            for j in range(1, len(ruta)):
-                idx_actual = ruta[j-1]
-                idx_siguiente = ruta[j]
-                
-                distancia = self.distancia_entre_puntos(idx_actual, idx_siguiente)
-                tiempo_viaje = self.duracion_entre_puntos(idx_actual, idx_siguiente)
-                
-                # Ajustar por ventanas de tiempo
-                tw_start = self.pedidos[idx_siguiente]["time_start_sec"]
-                if tiempo_actual < tw_start:
-                    tiempo_actual = tw_start
-                
-                tiempos_llegada.append(tiempo_actual)
-                tiempo_actual += tiempo_viaje + self.tiempo_servicio
-                distancia_total += distancia
-            
-            tiempo_total += tiempo_actual - self.hora_inicio
-            
-            rutas_formateadas.append({
-                'vehicle': i,
-                'route': ruta,
-                'arrival_sec': tiempos_llegada
-            })
+        # Asegurarnos de incluir el tiempo de llegada al depósito inicial
+        tiempos_llegada.append(tiempo_actual)
         
-        return {
-            'routes': rutas_formateadas,
-            'distance_total_m': distancia_total 
-        }
+        for j in range(1, len(ruta)):
+            idx_actual = ruta[j-1]
+            idx_siguiente = ruta[j]
+            
+            distancia = self.distancia_entre_puntos(idx_actual, idx_siguiente)
+            tiempo_viaje = self.duracion_entre_puntos(idx_actual, idx_siguiente)
+            
+            # Ajustar por ventanas de tiempo
+            tw_start = self.pedidos[idx_siguiente]["time_start_sec"]
+            if tiempo_actual < tw_start:
+                tiempo_actual = tw_start
+            
+            tiempos_llegada.append(tiempo_actual)
+            tiempo_actual += tiempo_viaje + self.tiempo_servicio
+            distancia_total += distancia
+        
+        tiempo_total += tiempo_actual - self.hora_inicio
+        
+        # Asegurar que tenemos un tiempo por cada nodo en la ruta
+        assert len(tiempos_llegada) == len(ruta), "Los tiempos de llegada deben coincidir con los nodos"
+        
+        rutas_formateadas.append({
+            'vehicle': i,
+            'route': ruta,
+            'arrival_sec': tiempos_llegada
+        })
+    
+    return {
+        'routes': rutas_formateadas,
+        'total_distance': distancia_total,
+        'total_time': tiempo_total,
+        'distance_total_m': distancia_total
+    }
