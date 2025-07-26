@@ -198,10 +198,18 @@ class LNSOptimizer:
 
 
     def _formatear_solucion(self):
-        """Formatea la solución para la aplicación"""
+        """Formatea la solución para la aplicación garantizando todos los puntos"""
         if not self.mejor_solucion:
             return None
             
+        # Primero verificar que todos los puntos estén incluidos
+        puntos_cubiertos = {p for ruta in self.mejor_solucion for p in ruta}
+        if len(puntos_cubiertos) != self.n:
+            puntos_faltantes = set(range(self.n)) - puntos_cubiertos
+            for punto in puntos_faltantes:
+                self._insertar_punto_forzado(punto)
+        
+        # Ahora formatear la solución
         rutas_formateadas = []
         distancia_total = 0
         
@@ -210,7 +218,6 @@ class LNSOptimizer:
             tiempo_actual = self.hora_inicio
             
             for j in range(len(ruta)):
-                # Todos los puntos (incluido el primero) calculan su tiempo
                 if j > 0:
                     distancia = self.dist_matrix[ruta[j-1]][ruta[j]]
                     tiempo_viaje = self.dur_matrix[ruta[j-1]][ruta[j]]
@@ -222,17 +229,26 @@ class LNSOptimizer:
                 tiempos.append(tiempo_actual)
                 tiempo_actual += self.tiempo_servicio
             
+            # Añadir información de orden a cada punto
+            ruta_con_orden = [
+                {
+                    'punto': ruta[j],
+                    'orden': j+1,
+                    'arrival_sec': tiempos[j]
+                }
+                for j in range(len(ruta))
+            ]
+            
             rutas_formateadas.append({
                 'vehicle': i,
-                'route': ruta,
-                'arrival_sec': tiempos
+                'route': ruta_con_orden
             })
         
         return {
             'routes': rutas_formateadas,
             'total_distance': distancia_total,
             'distance_total_m': distancia_total
-        }
+        }   
 
 def optimizar_ruta_lns(data, tiempo_max_seg=120):
     """Función principal para integración"""
