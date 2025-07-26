@@ -210,57 +210,48 @@ class LNSOptimizer:
 
 
     def _formatear_solucion(self):
-        """Formatea la solución para la aplicación garantizando todos los puntos"""
-        if not self.mejor_solucion:
-            return None
-            
-        # Primero verificar que todos los puntos estén incluidos
-        puntos_cubiertos = {p for ruta in self.mejor_solucion for p in ruta}
-        if len(puntos_cubiertos) != self.n:
-            puntos_faltantes = set(range(self.n)) - puntos_cubiertos
-            for punto in puntos_faltantes:
-                self._insertar_punto_forzado(punto)
+        """Formatea la solución garantizando estructura consistente"""
+        if not self.mejor_solucion or all(len(r) == 0 for r in self.mejor_solucion):
+            return {
+                'routes': [],
+                'total_distance': 0,
+                'distance_total_m': 0,
+                'error': 'No se pudo generar una solución válida'
+            }
         
-        # Ahora formatear la solución
         rutas_formateadas = []
         distancia_total = 0
         
         for i, ruta in enumerate(self.mejor_solucion):
+            if not ruta:  # Si la ruta está vacía
+                continue
+                
             tiempos = []
             tiempo_actual = self.hora_inicio
             
             for j in range(len(ruta)):
+                # Calcular tiempo de llegada
                 if j > 0:
-                    distancia = self.dist_matrix[ruta[j-1]][ruta[j]]
-                    tiempo_viaje = self.dur_matrix[ruta[j-1]][ruta[j]]
-                    tiempo_actual += tiempo_viaje
-                    distancia_total += distancia
+                    distancia_total += self.dist_matrix[ruta[j-1]][ruta[j]]
+                    tiempo_actual += self.dur_matrix[ruta[j-1]][ruta[j]]
                 
                 tw_start, _ = self.time_windows[ruta[j]]
                 tiempo_actual = max(tiempo_actual, tw_start)
                 tiempos.append(tiempo_actual)
                 tiempo_actual += self.tiempo_servicio
             
-            # Añadir información de orden a cada punto
-            ruta_con_orden = [
-                {
-                    'punto': ruta[j],
-                    'orden': j+1,
-                    'arrival_sec': tiempos[j]
-                }
-                for j in range(len(ruta))
-            ]
-            
             rutas_formateadas.append({
                 'vehicle': i,
-                'route': ruta_con_orden
+                'route': ruta,
+                'arrival_sec': tiempos,
+                'num_points': len(ruta)
             })
         
         return {
             'routes': rutas_formateadas,
             'total_distance': distancia_total,
-            'distance_total_m': distancia_total
-        }   
+            'distance_total_m': distancia_total,
+        }
 
 def optimizar_ruta_lns(data, tiempo_max_seg=120):
     """Función principal para integración"""
