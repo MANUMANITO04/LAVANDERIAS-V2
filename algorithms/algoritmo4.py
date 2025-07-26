@@ -91,25 +91,33 @@ class LNSOptimizer:
         return rutas
 
     def destruir_solucion(self, solucion):
+        """Versión robusta de destrucción que evita errores de índice"""
         solucion_dest = copy.deepcopy(solucion)
         removidos = []
         
-        # 1. Identificar puntos problemáticos (saltos largos)
+        # 1. Identificar puntos problemáticos de manera segura
         problematicos = []
         for i_ruta, ruta in enumerate(solucion):
+            if len(ruta) < 2:  # Saltar rutas demasiado cortas
+                continue
             for i in range(1, len(ruta)):
-                tiempo_viaje = self.dur_matrix[ruta[i-1]][ruta[i]]
-                if tiempo_viaje > MAX_TIEMPO_ENTRE_PUNTOS:
-                    problematicos.append((i_ruta, i))  # Guardamos posición exacta
+                try:
+                    if self.dur_matrix[ruta[i-1]][ruta[i]] > MAX_TIEMPO_ENTRE_PUNTOS:
+                        problematicos.append((i_ruta, i))
+                except IndexError:
+                    continue  # Si hay error en la matriz, saltar este punto
     
-        # 2. Destruir primero los problemáticos (hasta 70% de ellos)
+        # 2. Remover puntos problemáticos de manera controlada
         if problematicos:
             num_remover = min(len(problematicos), int(len(problematicos) * 0.7))
             for i_ruta, idx in random.sample(problematicos, num_remover):
-                if len(solucion_dest[i_ruta]) > 1:  # No vaciar rutas
-                    removidos.append(solucion_dest[i_ruta].pop(idx))
+                try:
+                    if 0 <= idx < len(solucion_dest[i_ruta]):
+                        removidos.append(solucion_dest[i_ruta].pop(idx))
+                except (IndexError, TypeError):
+                    continue  # Si falla, continuar con el siguiente
     
-        # 3. Destrucción aleatoria complementaria (controlada)
+        # 3. Destrucción aleatoria complementaria con verificación
         puntos_disponibles = []
         for i_ruta, ruta in enumerate(solucion_dest):
             if len(ruta) > 1:  # Solo rutas con múltiples puntos
@@ -120,7 +128,11 @@ class LNSOptimizer:
             num_aleatorio = min(num_aleatorio, len(puntos_disponibles))
             
             for i_ruta, idx in random.sample(puntos_disponibles, num_aleatorio):
-                removidos.append(solucion_dest[i_ruta].pop(idx))
+                try:
+                    if 0 <= idx < len(solucion_dest[i_ruta]):
+                        removidos.append(solucion_dest[i_ruta].pop(idx))
+                except (IndexError, TypeError):
+                    continue
     
         return solucion_dest, removidos
 
